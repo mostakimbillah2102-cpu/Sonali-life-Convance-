@@ -1,0 +1,36 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Stores user-specific data like search stats and draft bills.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The user's unique identifier."
+        },
+        "searchedToday": {
+          "type": "number",
+          "description": "Number of searches performed today."
+        },
+        "lastSearchDate": {
+          "type": "string",
+          "description": "ISO string of the last search date."
+        },
+        "billDraft": {
+          "type": "string",
+          "description": "JSON stringified array of draft bill items."
+        }
+      },
+      "required": ["uid"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "User profiles containing search stats and drafts."
+    }
+  }
+}
