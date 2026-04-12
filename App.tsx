@@ -292,6 +292,8 @@ const App: React.FC = () => {
                 billItems={billItems} 
                 setBillItems={setBillItems}
                 totalAmount={totalAmount}
+                user={user}
+                addToast={addToast}
             />
           </div>
         </div>

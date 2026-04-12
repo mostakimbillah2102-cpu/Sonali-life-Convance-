@@ -50,12 +50,12 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
       return;
     }
 
-    const searchTerm = toEnglishDigits(val.toLowerCase());
+    const searchTerm = toEnglishDigits(val.toLowerCase()).normalize('NFC');
     const matches: { code: string; data: BranchData }[] = [];
 
     Object.keys(BRANCH_DATABASE).forEach((code) => {
       const data = BRANCH_DATABASE[code];
-      const searchText = (code + data.branch + data.name + data.mobile).toLowerCase();
+      const searchText = (code + data.branch + data.name + data.mobile).toLowerCase().normalize('NFC');
       if (searchText.includes(searchTerm)) {
         matches.push({ code, data });
       }
@@ -104,10 +104,10 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
       let finalCode = searchTerm;
 
       if (!data) {
-        const lowerSearch = searchTerm.toLowerCase();
+        const lowerSearch = searchTerm.toLowerCase().normalize('NFC');
         const foundCode = Object.keys(BRANCH_DATABASE).find(code => {
             const d = BRANCH_DATABASE[code];
-            const searchText = (code + d.branch + d.name + d.mobile).toLowerCase();
+            const searchText = (code + d.branch + d.name + d.mobile).toLowerCase().normalize('NFC');
             return searchText.includes(lowerSearch);
         });
         if (foundCode) {

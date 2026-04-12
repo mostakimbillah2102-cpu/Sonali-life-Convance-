@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, Plus } from 'lucide-react';
 import { BRANCH_DATABASE, toBanglaDigits, toEnglishDigits } from '../constants';
 import { BranchData } from '../types';
@@ -11,6 +11,17 @@ interface AllBranchesModalProps {
 
 const AllBranchesModal: React.FC<AllBranchesModalProps> = ({ isOpen, onClose, onAddToBill }) => {
   const [filter, setFilter] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      // Use a small timeout to ensure it focuses after the modal animation/render
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -18,11 +29,11 @@ const AllBranchesModal: React.FC<AllBranchesModalProps> = ({ isOpen, onClose, on
   
   const filteredBranches = branches.filter(item => {
      if(!filter) return true;
-     const searchStr = filter.toLowerCase();
+     const searchStr = filter.toLowerCase().normalize('NFC');
      return (
          item.code.includes(searchStr) || 
-         item.branch.toLowerCase().includes(searchStr) || 
-         item.name.toLowerCase().includes(searchStr)
+         item.branch.toLowerCase().normalize('NFC').includes(searchStr) || 
+         item.name.toLowerCase().normalize('NFC').includes(searchStr)
      );
   });
 
@@ -48,12 +59,12 @@ const AllBranchesModal: React.FC<AllBranchesModalProps> = ({ isOpen, onClose, on
         <div className="p-4 border-b border-gray-100 bg-white sticky top-0 z-20">
             <div className="relative max-w-md mx-auto">
                 <input 
+                    ref={inputRef}
                     type="text" 
                     placeholder="কোড বা নাম দিয়ে খুঁজুন..." 
                     value={filter}
                     onChange={(e) => setFilter(toEnglishDigits(e.target.value))}
                     className="w-full pl-10 pr-4 py-3 border-2 border-gray-100 rounded-xl focus:border-emerald-500 focus:ring-4 focus:ring-emerald-50 outline-none transition-all text-sm font-medium"
-                    autoFocus
                 />
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             </div>

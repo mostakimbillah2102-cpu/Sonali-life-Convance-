@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react';
-import { FileSpreadsheet, Printer, Trash2, AlertCircle, Plus, Eraser, RotateCcw as ResetIcon, Check, X as CloseIcon, ArrowUp, ArrowDown, ArrowUpDown, User } from 'lucide-react';
+import { FileSpreadsheet, Printer, Trash2, AlertCircle, Plus, Eraser, RotateCcw as ResetIcon, Check, X as CloseIcon, ArrowUp, ArrowDown, ArrowUpDown, User, Save, FolderOpen } from 'lucide-react';
 import { BRANCH_DATABASE, toBanglaDigits, toEnglishDigits } from '../constants';
 import { BillItem } from '../types';
+import { User as FirebaseUser } from 'firebase/auth';
+import { db } from '../firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import SavedBillsModal from './SavedBillsModal';
 
 interface BillSectionProps {
   billItems: BillItem[];
   setBillItems: React.Dispatch<React.SetStateAction<BillItem[]>>;
   totalAmount: number;
+  user: FirebaseUser | null;
+  addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, totalAmount }) => {
+const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, totalAmount, user, addToast }) => {
   const [inputCodes, setInputCodes] = useState('');
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState('');
@@ -18,6 +24,8 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
   // States for confirmation
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSavedBillsModalOpen, setIsSavedBillsModalOpen] = useState(false);
 
   type SortField = 'branch' | 'serial' | 'amount' | null;
   type SortOrder = 'asc' | 'desc';
@@ -193,12 +201,56 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
     link.click();
   };
 
+  const handleSaveBill = async () => {
+    if (!user) {
+      addToast('বিল সেভ করতে প্রথমে লগইন করুন', 'error');
+      return;
+    }
+    if (billItems.length === 0) {
+      addToast('সেভ করার মতো কোনো ব্রাঞ্চ নেই', 'error');
+      return;
+    }
+
+    const billName = window.prompt('এই বিলটির একটি নাম দিন (যেমন: জানুয়ারি মাসের বিল):');
+    if (!billName || !billName.trim()) return;
+
+    setIsSaving(true);
+    try {
+      const billId = Date.now().toString();
+      await setDoc(doc(db, `users/${user.uid}/savedBills`, billId), {
+        id: billId,
+        uid: user.uid,
+        name: billName.trim(),
+        items: JSON.stringify(billItems),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      addToast('বিল সফলভাবে সেভ হয়েছে!', 'success');
+    } catch (error) {
+      console.error("Error saving bill:", error);
+      addToast('বিল সেভ করতে সমস্যা হয়েছে', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-2xl shadow-lg border border-emerald-100">
-        <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-          <span className="bg-orange-500 text-white w-8 h-8 flex items-center justify-center rounded-full font-bold">২</span>
-          <h2 className="text-xl font-bold text-gray-800">বিল / তালিকা তৈরি (Custom List)</h2>
+        <div className="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
+          <div className="flex items-center gap-3">
+            <span className="bg-orange-500 text-white w-8 h-8 flex items-center justify-center rounded-full font-bold">২</span>
+            <h2 className="text-xl font-bold text-gray-800">বিল / তালিকা তৈরি (Custom List)</h2>
+          </div>
+          {user && (
+            <button 
+              onClick={() => setIsSavedBillsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl font-bold text-sm transition-all border border-blue-100"
+            >
+              <FolderOpen size={16} />
+              সেভ করা বিল
+            </button>
+          )}
         </div>
 
         <div className="mb-4">
@@ -246,6 +298,17 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
             </h3>
             
             <div className="flex flex-wrap justify-center gap-2">
+                {/* Save Bill Button */}
+                {user && (
+                    <button 
+                      onClick={handleSaveBill}
+                      disabled={isSaving}
+                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-bold text-xs disabled:opacity-50"
+                    >
+                        <Save size={14} /> {isSaving ? 'সেভ হচ্ছে...' : 'সেভ করুন'}
+                    </button>
+                )}
+
                 {/* 2-Step Reset Button */}
                 <button 
                   onClick={handleResetData} 
@@ -387,6 +450,16 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
           </div>
         </div>
       )}
+
+      <SavedBillsModal 
+        isOpen={isSavedBillsModalOpen}
+        onClose={() => setIsSavedBillsModalOpen(false)}
+        userId={user?.uid}
+        onLoadBill={(items) => {
+          setBillItems(items);
+          addToast('বিল সফলভাবে লোড হয়েছে!', 'success');
+        }}
+      />
     </div>
   );
 };

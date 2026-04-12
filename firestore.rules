@@ -13,6 +13,16 @@ service cloud.firestore {
     //   - lastSearchDate: string (optional) - ISO string of the last search date.
     //   - billDraft: string (optional) - JSON stringified array of draft bill items.
     //
+    // Collection: users/{userId}/savedBills
+    // Document ID: {billId}
+    // Fields:
+    //   - id: string (required) - Unique identifier for the saved bill.
+    //   - uid: string (required) - The user's unique identifier.
+    //   - name: string (required) - Name of the saved bill.
+    //   - items: string (required) - JSON stringified array of bill items.
+    //   - createdAt: string (required) - ISO string of when the bill was created.
+    //   - updatedAt: string (required) - ISO string of when the bill was last updated.
+    //
     // ===============================================================
     
     // ===============================================================
@@ -46,11 +56,28 @@ service cloud.firestore {
              (!('billDraft' in data) || data.billDraft is string);
     }
 
+    function isValidSavedBill(data) {
+      return hasOnlyAllowedFields(['id', 'uid', 'name', 'items', 'createdAt', 'updatedAt']) &&
+             data.id is string &&
+             data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.items is string && data.items.size() <= 1000000 &&
+             data.createdAt is string &&
+             data.updatedAt is string;
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && uidUnchanged();
       allow update: if isOwner(userId) && isValidUser(request.resource.data) && uidNotModified();
       allow delete: if isOwner(userId);
+      
+      match /savedBills/{billId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidSavedBill(request.resource.data) && uidUnchanged();
+        allow update: if isOwner(userId) && isValidSavedBill(request.resource.data) && uidNotModified();
+        allow delete: if isOwner(userId);
+      }
     }
   }
 }
