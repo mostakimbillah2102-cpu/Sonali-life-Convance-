@@ -5,6 +5,7 @@ import Stats from './components/Stats';
 import SearchSection from './components/SearchSection';
 import BillSection from './components/BillSection';
 import Toast from './components/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { BRANCH_DATABASE, toEnglishDigits } from './constants';
 import { BillItem, BranchData, ToastData } from './types';
 import { auth, db } from './firebase';
@@ -252,7 +253,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-emerald-50 font-sans text-gray-800">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-emerald-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 font-sans text-gray-800 dark:text-gray-100 transition-colors">
       <Header 
         user={user} 
         onLogin={handleLogin} 
@@ -276,11 +277,11 @@ const App: React.FC = () => {
                 onAddToBill={handleAddToBill}
             />
             
-            <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl">
-              <h3 className="text-blue-800 font-bold mb-2">টিপস</h3>
-              <p className="text-blue-600 text-sm leading-relaxed">
-                • সার্চ রেজাল্ট থেকে সরাসরি (+) বাটনে চাপ দিয়ে লিস্টে নাম তুলুন।<br/>
-                • পেজ রিফ্রেশ দিলেও আপনার তৈরি করা লিস্ট মুছে যাবে না।<br/>
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 p-6 rounded-2xl">
+              <h3 className="text-blue-800 dark:text-blue-400 font-bold mb-2">টিপস</h3>
+              <p className="text-blue-600 dark:text-blue-300 text-sm leading-relaxed">
+                • সার্চ রেজাল্ট থেকে সরাসরি (+) বাটনে চাপ দিয়ে লিস্টে নাম তুলুন。<br/>
+                • পেজ রিফ্রেশ দিলেও আপনার তৈরি করা লিস্ট মুছে যাবে না。<br/>
                 • লগইন করলে আপনার ডাটা ক্লাউডে সেভ থাকবে।
               </p>
             </div>
@@ -306,4 +307,10 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
+export default function AppWrapper() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}

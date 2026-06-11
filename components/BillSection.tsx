@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { FileSpreadsheet, Printer, Trash2, AlertCircle, Plus, Eraser, RotateCcw as ResetIcon, Check, X as CloseIcon, ArrowUp, ArrowDown, ArrowUpDown, User, Save, FolderOpen } from 'lucide-react';
+import { FileSpreadsheet, Printer, Trash2, AlertCircle, Plus, Eraser, RotateCcw as ResetIcon, Check, X as CloseIcon, ArrowUp, ArrowDown, ArrowUpDown, User, Save, FolderOpen, Download } from 'lucide-react';
 import { BRANCH_DATABASE, toBanglaDigits, toEnglishDigits } from '../constants';
 import { BillItem } from '../types';
 import { User as FirebaseUser } from 'firebase/auth';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import SavedBillsModal from './SavedBillsModal';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 interface BillSectionProps {
   billItems: BillItem[];
@@ -188,6 +190,61 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
     printWindow.document.close();
   };
 
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(18);
+    doc.text('Sonali Life Insurance - Payment List', 14, 22);
+    
+    // Define table columns and data
+    const tableColumn = ["#", "Code", "Branch", "Name", "Mobile", "Serial", "Amount"];
+    const tableRows = billItems.map((item, idx) => [
+      idx + 1,
+      item.code,
+      item.branch,
+      item.name,
+      item.mobile,
+      item.serial || '-',
+      item.amount || '0'
+    ]);
+
+    // Add total row
+    tableRows.push(['', '', '', '', '', 'Total:', totalAmount.toString()]);
+
+    // Generate table
+    (doc as any).autoTable({
+      head: [tableColumn],
+      body: tableRows,
+      startY: 30,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 3 },
+      headStyles: { fillColor: [4, 120, 87] }, // Emerald 700
+      columnStyles: {
+        0: { halign: 'center' },
+        1: { halign: 'center' },
+        5: { halign: 'center' },
+        6: { halign: 'right', fontStyle: 'bold' }
+      },
+      didParseCell: function (data: any) {
+        // Make total row bold
+        if (data.row.index === tableRows.length - 1) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [240, 253, 244]; // Emerald 50
+        }
+      }
+    });
+
+    // Add note if exists
+    if (note) {
+      const finalY = (doc as any).lastAutoTable.finalY || 30;
+      doc.setFontSize(10);
+      doc.text(`Note: ${note}`, 14, finalY + 10);
+    }
+
+    doc.save('sonali_list.pdf');
+  };
+
   const handleDownloadCSV = () => {
     let content = "\uFEFFক্রমিক,কোড,শাখা,নাম,মোবাইল,সিরিয়াল,টাকা\n";
     billItems.forEach((item, idx) => {
@@ -236,16 +293,16 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
 
   return (
     <div className="space-y-6">
-      <div className="bg-white p-6 rounded-2xl shadow-lg border border-emerald-100">
-        <div className="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg border border-emerald-100 dark:border-gray-700 transition-colors">
+        <div className="flex items-center justify-between mb-6 border-b border-gray-100 dark:border-gray-700 pb-4">
           <div className="flex items-center gap-3">
             <span className="bg-orange-500 text-white w-8 h-8 flex items-center justify-center rounded-full font-bold">২</span>
-            <h2 className="text-xl font-bold text-gray-800">বিল / তালিকা তৈরি (Custom List)</h2>
+            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">বিল / তালিকা তৈরি (Custom List)</h2>
           </div>
           {user && (
             <button 
               onClick={() => setIsSavedBillsModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl font-bold text-sm transition-all border border-blue-100"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl font-bold text-sm transition-all border border-blue-100 dark:border-blue-800"
             >
               <FolderOpen size={16} />
               সেভ করা বিল
@@ -254,18 +311,18 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
         </div>
 
         <div className="mb-4">
-          <label className="block text-gray-700 font-medium mb-2">বাল্ক কোড ইনপুট (কমা দিয়ে আলাদা করুন)</label>
+          <label className="block text-gray-700 dark:text-gray-300 font-medium mb-2">বাল্ক কোড ইনপুট (কমা দিয়ে আলাদা করুন)</label>
           <div className="relative">
             <textarea
                 value={inputCodes}
                 onChange={(e) => setInputCodes(e.target.value)}
                 placeholder="যেমন: ৩৪১, ২৮৫, ১৮৫, ২৮৪"
-                className="w-full h-24 p-4 border-2 border-gray-200 rounded-xl focus:border-orange-500 focus:ring-0 outline-none transition-all resize-none text-lg"
+                className="w-full h-24 p-4 border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 rounded-xl focus:border-orange-500 dark:focus:border-orange-500 focus:ring-0 outline-none transition-all resize-none text-lg"
             />
             {inputCodes && (
                 <button 
                     onClick={() => setInputCodes('')}
-                    className="absolute top-3 right-3 text-gray-400 hover:text-red-500 bg-white p-1 rounded-full shadow-sm"
+                    className="absolute top-3 right-3 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-gray-800 p-1 rounded-full shadow-sm"
                 >
                     <Eraser size={16} />
                 </button>
@@ -276,13 +333,13 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
         <button
           onClick={handleGenerateList}
           disabled={loading || !inputCodes.trim()}
-          className="w-full bg-orange-500 hover:bg-orange-600 text-white px-6 py-4 rounded-xl font-bold shadow-md shadow-orange-100 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+          className="w-full bg-orange-500 hover:bg-orange-600 text-white px-6 py-4 rounded-xl font-bold shadow-md shadow-orange-100 dark:shadow-orange-900/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
         >
           {loading ? 'প্রসেসিং...' : <><Plus size={20} /> যোগ করুন</>}
         </button>
         
         {notFoundCodes.length > 0 && (
-            <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-lg flex items-start gap-2 text-sm border border-red-100 animate-in fade-in">
+            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg flex items-start gap-2 text-sm border border-red-100 dark:border-red-800/50 animate-in fade-in">
                 <AlertCircle size={16} className="mt-1 flex-shrink-0" />
                 <span>পাওয়া যায়নি: {notFoundCodes.join(', ')}</span>
             </div>
@@ -290,11 +347,11 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
       </div>
 
       {billItems.length > 0 && (
-        <div className="bg-white p-6 rounded-2xl shadow-lg border border-emerald-100 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg border border-emerald-100 dark:border-gray-700 animate-in fade-in slide-in-from-bottom-4 duration-500 transition-colors">
           <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
                 পেমেন্ট তালিকা 
-                <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full">{toBanglaDigits(billItems.length)} টি</span>
+                <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs px-2 py-1 rounded-full">{toBanglaDigits(billItems.length)} টি</span>
             </h3>
             
             <div className="flex flex-wrap justify-center gap-2">
@@ -315,7 +372,7 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all shadow-sm font-bold text-xs border ${
                     isConfirmingReset 
                     ? 'bg-amber-500 text-white border-amber-600 scale-105' 
-                    : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                    : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 dark:hover:bg-amber-900/40'
                   }`}
                 >
                     {isConfirmingReset ? <><Check size={14} /> নিশ্চিত?</> : <><ResetIcon size={14} /> রিসেট</>}
@@ -327,14 +384,17 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all shadow-sm font-bold text-xs border ${
                     isConfirmingClear 
                     ? 'bg-red-600 text-white border-red-700 scale-105 animate-pulse' 
-                    : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-600 hover:text-white'
+                    : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800/50 hover:bg-red-600 hover:text-white dark:hover:bg-red-800 dark:hover:text-white'
                   }`}
                 >
                     {isConfirmingClear ? <><Check size={14} /> মুছুন?</> : <><Trash2 size={14} /> সব মুছুন</>}
                 </button>
 
-                <div className="w-[1px] h-8 bg-gray-200 mx-1 hidden sm:block"></div>
+                <div className="w-[1px] h-8 bg-gray-200 dark:bg-gray-700 mx-1 hidden sm:block"></div>
                 
+                <button onClick={handleDownloadPDF} className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm font-bold text-xs">
+                    <Download size={14} /> PDF
+                </button>
                 <button onClick={handleDownloadCSV} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm font-bold text-xs">
                     <FileSpreadsheet size={14} /> Excel
                 </button>
@@ -344,40 +404,40 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-700">
             <table className="w-full text-left">
-              <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[10px] tracking-wider">
+              <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-bold uppercase text-[10px] tracking-wider">
                 <tr>
                   <th className="p-4 w-12 text-center">#</th>
                   <th 
-                    className="p-4 cursor-pointer hover:bg-gray-100 transition-colors group"
+                    className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
                     onClick={() => handleSort('branch')}
                   >
                     <div className="flex items-center gap-1">
                       বিবরণ
-                      <span className="text-gray-400 group-hover:text-emerald-600">
+                      <span className="text-gray-400 dark:text-gray-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
                         {sortField === 'branch' ? (sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="opacity-50" />}
                       </span>
                     </div>
                   </th>
                   <th 
-                    className="p-4 w-28 text-center cursor-pointer hover:bg-gray-100 transition-colors group"
+                    className="p-4 w-28 text-center cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
                     onClick={() => handleSort('serial')}
                   >
                     <div className="flex items-center justify-center gap-1">
                       সিরিয়াল
-                      <span className="text-gray-400 group-hover:text-emerald-600">
+                      <span className="text-gray-400 dark:text-gray-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
                         {sortField === 'serial' ? (sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="opacity-50" />}
                       </span>
                     </div>
                   </th>
                   <th 
-                    className="p-4 w-32 text-right cursor-pointer hover:bg-gray-100 transition-colors group"
+                    className="p-4 w-32 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
                     onClick={() => handleSort('amount')}
                   >
                     <div className="flex items-center justify-end gap-1">
                       টাকা
-                      <span className="text-gray-400 group-hover:text-emerald-600">
+                      <span className="text-gray-400 dark:text-gray-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
                         {sortField === 'amount' ? (sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="opacity-50" />}
                       </span>
                     </div>
@@ -385,18 +445,18 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                   <th className="p-4 w-10"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {billItems.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-emerald-50/30 transition-colors group">
-                    <td className="p-4 text-gray-400 font-bold text-xs text-center">{toBanglaDigits(idx + 1)}</td>
+                  <tr key={idx} className="hover:bg-emerald-50/30 dark:hover:bg-emerald-900/10 transition-colors group">
+                    <td className="p-4 text-gray-400 dark:text-gray-500 font-bold text-xs text-center">{toBanglaDigits(idx + 1)}</td>
                     <td className="p-4">
                         <div className="flex flex-col gap-1.5">
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px] whitespace-nowrap">{toBanglaDigits(item.code)}</span>
-                                <span className="font-bold text-gray-800 text-sm leading-tight">{item.branch}</span>
+                                <span className="font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded text-[11px] whitespace-nowrap">{toBanglaDigits(item.code)}</span>
+                                <span className="font-bold text-gray-800 dark:text-gray-200 text-sm leading-tight">{item.branch}</span>
                             </div>
-                            <div className="text-xs text-gray-500 flex items-center gap-1">
-                                <User size={12} className="text-gray-400 shrink-0" />
+                            <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                <User size={12} className="text-gray-400 dark:text-gray-500 shrink-0" />
                                 <span className="truncate max-w-[150px] sm:max-w-none">{item.name}</span>
                             </div>
                         </div>
@@ -407,7 +467,7 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                         value={toBanglaDigits(item.serial)}
                         onChange={(e) => handleInputChange(idx, 'serial', toEnglishDigits(e.target.value))}
                         placeholder="-"
-                        className="w-full p-2 border border-gray-100 rounded-lg text-center text-sm focus:border-emerald-500 outline-none bg-gray-50/50 focus:bg-white transition-all font-medium"
+                        className="w-full p-2 border border-gray-100 dark:border-gray-700 rounded-lg text-center text-sm focus:border-emerald-500 dark:focus:border-emerald-500 outline-none bg-gray-50/50 dark:bg-gray-900/50 text-gray-800 dark:text-gray-100 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium"
                       />
                     </td>
                     <td className="p-4">
@@ -416,13 +476,13 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                         value={toBanglaDigits(item.amount)}
                         onChange={(e) => handleInputChange(idx, 'amount', toEnglishDigits(e.target.value))}
                         placeholder="০"
-                        className="w-full p-2 border border-gray-100 rounded-lg text-right font-bold text-sm text-gray-700 focus:text-black focus:border-emerald-500 outline-none bg-gray-50/50 focus:bg-white transition-all"
+                        className="w-full p-2 border border-gray-100 dark:border-gray-700 rounded-lg text-right font-bold text-sm text-gray-700 dark:text-gray-300 focus:text-black dark:focus:text-white focus:border-emerald-500 dark:focus:border-emerald-500 outline-none bg-gray-50/50 dark:bg-gray-900/50 focus:bg-white dark:focus:bg-gray-800 transition-all"
                       />
                     </td>
                     <td className="p-2 text-center">
                         <button 
                             onClick={() => removeItem(idx)}
-                            className="text-gray-300 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-all sm:opacity-0 group-hover:opacity-100"
+                            className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-all sm:opacity-0 group-hover:opacity-100"
                         >
                             <CloseIcon size={16} />
                         </button>
@@ -430,10 +490,10 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-emerald-50/50 font-bold border-t border-emerald-100">
+              <tfoot className="bg-emerald-50/50 dark:bg-emerald-900/10 font-bold border-t border-emerald-100 dark:border-emerald-900/30">
                 <tr>
-                    <td colSpan={3} className="p-5 text-right text-gray-500 text-xs uppercase tracking-widest">সর্বমোট:</td>
-                    <td className="p-5 text-right text-emerald-800 text-xl font-black">{toBanglaDigits(totalAmount)}</td>
+                    <td colSpan={3} className="p-5 text-right text-gray-500 dark:text-gray-400 text-xs uppercase tracking-widest">সর্বমোট:</td>
+                    <td className="p-5 text-right text-emerald-800 dark:text-emerald-400 text-xl font-black">{toBanglaDigits(totalAmount)}</td>
                     <td></td>
                 </tr>
               </tfoot>
@@ -445,7 +505,7 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="বিল সম্পর্কিত কোনো বিশেষ নোট থাকলে এখানে লিখুন (প্রিন্টে দেখা যাবে)..."
-                className="w-full p-4 border border-gray-100 rounded-xl focus:border-emerald-500 outline-none text-sm min-h-[100px] bg-gray-50/30 focus:bg-white transition-all"
+                className="w-full p-4 border border-gray-100 dark:border-gray-700 rounded-xl focus:border-emerald-500 dark:focus:border-emerald-500 outline-none text-sm min-h-[100px] bg-gray-50/30 dark:bg-gray-900/30 text-gray-800 dark:text-gray-100 focus:bg-white dark:focus:bg-gray-800 transition-all"
             />
           </div>
         </div>

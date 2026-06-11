@@ -8,7 +8,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['icon.svg'],
       manifest: {
         name: 'Sonali Life Smart System',
         short_name: 'Sonali Smart',
@@ -20,15 +20,15 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: 'https://cdn-icons-png.flaticon.com/512/2830/2830305.png', // Using a generic placeholder icon for now
+            src: '/icon.svg',
             sizes: '192x192',
-            type: 'image/png',
+            type: 'image/svg+xml',
             purpose: 'any maskable'
           },
           {
-            src: 'https://cdn-icons-png.flaticon.com/512/2830/2830305.png',
+            src: '/icon.svg',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/svg+xml',
             purpose: 'any maskable'
           }
         ]
