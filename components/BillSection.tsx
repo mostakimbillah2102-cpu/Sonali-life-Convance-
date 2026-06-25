@@ -15,9 +15,11 @@ interface BillSectionProps {
   totalAmount: number;
   user: FirebaseUser | null;
   addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  lastSaved?: Date | null;
+  onSave?: () => Promise<void>;
 }
 
-const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, totalAmount, user, addToast }) => {
+const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, totalAmount, user, addToast, lastSaved, onSave }) => {
   const [inputCodes, setInputCodes] = useState('');
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState('');
@@ -62,15 +64,20 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
     setTimeout(() => {
       const newItems: BillItem[] = [];
       const missing: string[] = [];
+      const duplicates: string[] = [];
 
       codes.forEach(code => {
         if (BRANCH_DATABASE[code]) {
-          newItems.push({
-            ...BRANCH_DATABASE[code],
-            code: code,
-            serial: '',
-            amount: ''
-          });
+          if (billItems.some(item => item.code === code) || newItems.some(item => item.code === code)) {
+            duplicates.push(toBanglaDigits(code));
+          } else {
+            newItems.push({
+              ...BRANCH_DATABASE[code],
+              code: code,
+              serial: '',
+              amount: ''
+            });
+          }
         } else {
           missing.push(toBanglaDigits(code));
         }
@@ -80,12 +87,33 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
       setNotFoundCodes(missing);
       setInputCodes('');
       setLoading(false);
+      
+      if (duplicates.length > 0) {
+        addToast(`ইতোমধ্যে লিস্টে আছে: ${duplicates.join(', ')}`, 'info');
+      }
     }, 400);
   };
 
-  const handleInputChange = (index: number, field: 'serial' | 'amount', value: string) => {
+  const handleInputChange = (index: number, field: 'serial' | 'amount' | 'calculation', value: string) => {
     const newItems = [...billItems];
     newItems[index][field] = value;
+
+    // Auto-calculate amount if calculation field changed
+    if (field === 'calculation') {
+      try {
+        const englishCalc = toEnglishDigits(value);
+        if (/^[0-9+\-*/.\s()]+$/.test(englishCalc) && englishCalc.trim() !== '') {
+          // eslint-disable-next-line no-eval
+          const result = eval(englishCalc);
+          if (typeof result === 'number' && !isNaN(result)) {
+            newItems[index].amount = Math.round(result).toString();
+          }
+        }
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    }
+
     setBillItems(newItems);
   };
 
@@ -142,19 +170,45 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
     setBillItems(sortedItems);
   };
 
+  const moveItemUp = (index: number) => {
+    if (index === 0) return;
+    const newItems = [...billItems];
+    const temp = newItems[index];
+    newItems[index] = newItems[index - 1];
+    newItems[index - 1] = temp;
+    setBillItems(newItems);
+  };
+
+  const moveItemDown = (index: number) => {
+    if (index === billItems.length - 1) return;
+    const newItems = [...billItems];
+    const temp = newItems[index];
+    newItems[index] = newItems[index + 1];
+    newItems[index + 1] = temp;
+    setBillItems(newItems);
+  };
+
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     if(!printWindow) return;
 
+    const monthNamesBn = ["জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
+    const d = new Date();
+    const currentMonthBn = monthNamesBn[d.getMonth()];
+    
+    const dateStr = toBanglaDigits(`${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`) + 'ইং';
+    const yearStr = toBanglaDigits(d.getFullYear().toString());
+
     const tableRows = billItems.map((item, idx) => `
         <tr>
             <td style="text-align:center">${toBanglaDigits(idx + 1)}</td>
-            <td style="text-align:center">${toBanglaDigits(item.code)}</td>
-            <td>${item.branch}</td>
-            <td>${item.name}</td>
-            <td style="text-align:center">${item.mobile}</td>
-            <td style="text-align:center">${item.serial || '-'}</td>
-            <td style="text-align:right; font-weight:bold">${item.amount ? toBanglaDigits(item.amount) : '০'}</td>
+            <td style="text-align:center">${item.branch}</td>
+            <td style="text-align:center">${toBanglaDigits(item.serial) || '-'}</td>
+            <td style="text-align:center">যাতায়াত</td>
+            <td style="text-align:center">${currentMonthBn}</td>
+            <td style="text-align:center">সহযোগী বীমা দাবি</td>
+            <td style="text-align:center">${item.name}</td>
+            <td style="text-align:center">${item.amount ? toBanglaDigits(item.amount) : '০'}</td>
         </tr>
     `).join('');
 
@@ -164,24 +218,217 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
         <head>
             <meta charset="UTF-8">
             <title>সোনালী লাইফ - বিল তালিকা</title>
-            <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600&display=swap" rel="stylesheet">
             <style>
-                body { font-family: 'Hind Siliguri', sans-serif; padding: 40px; color: #111; }
-                .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #047857; padding-bottom: 20px; }
-                h1 { color: #047857; margin: 0; font-size: 28px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
-                th { background-color: #047857; color: white; padding: 10px; border: 1px solid #065f46; }
-                td { border: 1px solid #ccc; padding: 8px; }
-                .total-row { background-color: #f0fdf4; font-weight: bold; }
+                @import url('https://fonts.googleapis.com/css2?family=Tiro+Bangla&display=swap');
+                body { 
+                    font-family: 'Tiro Bangla', serif; 
+                    padding: 40px 60px; 
+                    color: #000; 
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+                .header-container {
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                    margin-bottom: 20px;
+                }
+                .header-logo {
+                    width: 70px;
+                    flex-shrink: 0;
+                }
+                .header-text-container {
+                    flex-grow: 1;
+                }
+                .logo-text-bn {
+                    color: #c48c36; 
+                    font-size: 38px; 
+                    font-weight: bold; 
+                    margin: 0;
+                    line-height: 1.1;
+                }
+                .logo-text-en {
+                    color: #7ab83e; 
+                    font-size: 20px; 
+                    margin: 0; 
+                    font-family: 'Arial', sans-serif;
+                    letter-spacing: 0.5px;
+                }
+                .sub-header {
+                    display: flex;
+                    justify-content: space-between;
+                    font-size: 14px;
+                    color: #444;
+                    margin-top: 5px;
+                }
+                .sli-text {
+                    color: #c48c36;
+                    font-style: italic;
+                    font-weight: bold;
+                    margin-right: 5px;
+                    font-family: 'Arial', sans-serif;
+                }
+                .reg-text {
+                    color: #c48c36;
+                }
+                .meta-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-top: 10px;
+                    font-size: 13px;
+                }
+                .note-sheet-title {
+                    text-align: center;
+                    font-weight: bold;
+                    font-size: 16px;
+                    margin: 15px 0;
+                }
+                .subject {
+                    font-weight: bold;
+                    margin-bottom: 10px;
+                    text-decoration: underline;
+                }
+                .paragraph {
+                    text-align: justify;
+                    margin-bottom: 20px;
+                }
+                table { 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    margin-top: 15px; 
+                    font-size: 13px; 
+                }
+                th, td { 
+                    border: 1px solid #000; 
+                    padding: 6px; 
+                }
+                th { 
+                    text-align: center;
+                    font-weight: bold;
+                }
+                .total-row { 
+                    font-weight: bold; 
+                }
+                .conclusion {
+                    margin-top: 20px;
+                    text-align: justify;
+                }
+                .signatures {
+                    margin-top: 60px;
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    row-gap: 80px;
+                    text-align: center;
+                    font-size: 13px;
+                }
+                .sig-box {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                }
+                .sig-line {
+                    border-top: 1px solid #000;
+                    width: 80%;
+                    margin-bottom: 5px;
+                }
+                @media print {
+                    body { padding: 0; }
+                    @page { margin: 20mm; }
+                }
             </style>
         </head>
         <body>
-            <div class="header"><h1>সোনালী লাইফ ইন্স্যুরেন্স</h1><p>পেমেন্ট তালিকা</p></div>
+            <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #c48c36; padding-bottom: 10px;">
+                <img src="${window.location.origin}/header-logo.png" onerror="this.style.display='none'; document.getElementById('css-header').style.display='block';" style="width: 100%; max-width: 700px; margin: 0 auto; display: block;" alt="Sonali Life Insurance" />
+                
+                <div id="css-header" class="header-container" style="display: none;">
+                    <div class="header-text-container" style="text-align: center;">
+                        <h1 class="logo-text-bn">সোনালী লাইফ ইন্স্যুরেন্স কোম্পানী লিমিটেড</h1>
+                        <h2 class="logo-text-en">SONALI LIFE INSURANCE COMPANY LIMITED</h2>
+                        <div class="sub-header">
+                            <span><strong class="sli-text">SLI</strong> ইসলামী শরিয়াহ্ মোতাবেক পরিচালিত জীবন বীমা কোম্পানী</span>
+                            <span class="reg-text">সরকারী নিবন্ধন নম্বরঃ লাইফ ০২/২০১৩</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="meta-row">
+                <span>সূত্র নংঃ এসএলআইসিএল/দাঃ বিঃ/নোঃ শীঃ/৩৭২১/${yearStr}ইং</span>
+                <span>তারিখঃ ${dateStr}</span>
+            </div>
+
+            <div class="note-sheet-title"><u>নোট শীট</u></div>
+
+            <div class="subject">
+                বিষয়ঃ সোনালী লাইফ ইন্স্যুরেন্স কোম্পানী লিমিটেডের দাবী নিষ্পত্তির ক্ষেত্রে শাখা অফিসারদের যাতায়াত ও আপ্যায়ন বিল পরিশোধের অনুমোদন প্রদান প্রসঙ্গে।
+            </div>
+
+            <div class="paragraph">
+                সোনালী লাইফ ইন্স্যুরেন্স কোম্পানী লিমিটেড এর দাবী নিষ্পত্তির ক্ষেত্রে শাখা অফিসের কর্মকর্তাগণ দাবী তদন্ত করে থাকেন। সেই আলোকে শাখা অফিসারদের যাতায়াত ও আপ্যায়ন বিল নিম্নোক্ত ছক অনুযায়ী সর্বমোট = ${toBanglaDigits(totalAmount)}/- টাকা অনুমোদনের প্রয়োজনীয়তা পরিলক্ষিত হয়।
+            </div>
+
             <table>
-                <thead><tr><th>ক্রমিক</th><th>কোড</th><th>শাখা</th><th>নাম</th><th>মোবাইল</th><th>সিরিয়াল</th><th>টাকা</th></tr></thead>
-                <tbody>${tableRows}<tr class="total-row"><td colspan="6" style="text-align:right">সর্বমোট:</td><td style="text-align:right">${toBanglaDigits(totalAmount)}</td></tr></tbody>
+                <thead>
+                    <tr>
+                        <th style="width: 5%">ক্রঃনং</th>
+                        <th style="width: 15%">অফিসের নাম</th>
+                        <th style="width: 10%">ক্রমিক নং</th>
+                        <th style="width: 12%">বিলের ধরন</th>
+                        <th style="width: 10%">মাসের নাম</th>
+                        <th style="width: 15%">দাবীর ধরন</th>
+                        <th style="width: 23%">অফিসারের নাম</th>
+                        <th style="width: 10%">টাকা</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tableRows}
+                    <tr class="total-row">
+                        <td colspan="7" style="text-align:right; border: 1px solid #000; padding-right: 10px;">মোট বিল=</td>
+                        <td style="text-align:center; border: 1px solid #000;">${toBanglaDigits(totalAmount)}</td>
+                    </tr>
+                </tbody>
             </table>
-            ${note ? `<div style="margin-top:20px; padding:15px; background:#f9f9f9; border:1px solid #eee;"><strong>নোট:</strong> ${note}</div>` : ''}
+
+            <div class="conclusion">
+                এমতাবস্থায় উপরোক্ত ছক অনুযায়ী শাখা অফিসের অফিসারদের বীমাদাবী তদন্তের যাতায়াত বিল বাবদ সর্বমোট = ${toBanglaDigits(totalAmount)}/- টাকা অনুমোদনের বিষয়ে কর্তৃপক্ষের সিদ্ধান্তের লক্ষ্যে নথি পেশ করা হলো।
+            </div>
+
+            <div class="signatures">
+                <div class="sig-box">
+                    <div class="sig-line"></div>
+                    <strong>নথি উত্থাপনকারী</strong>
+                    <span>সিনিয়র অফিসার দাবীবিভাগ</span>
+                </div>
+                <div class="sig-box">
+                    <div class="sig-line"></div>
+                    <strong>মোঃ শাহিদুর রহমান</strong>
+                    <span>(ভাইস প্রেসিডেন্ট),</span>
+                    <span>ইনচার্জ, দাবীবিভাগ</span>
+                </div>
+                <div class="sig-box">
+                    <div class="sig-line"></div>
+                    <strong>অভ্যন্তরীণ নিরীক্ষা বিভাগ</strong>
+                </div>
+
+                <div class="sig-box">
+                    <div class="sig-line"></div>
+                    <strong>মোহাম্মদ মঞ্জুর মোর্শেদ</strong>
+                    <span>(সিওও)</span>
+                </div>
+                <div class="sig-box">
+                    <div class="sig-line"></div>
+                    <strong>মোহাম্মদ আব্দুল হান্নান</strong>
+                    <span>(ডিএমডি এন্ড সিএফও)</span>
+                </div>
+                <div class="sig-box">
+                    <div class="sig-line"></div>
+                    <strong>মোঃ রফিকুল ইসলাম</strong>
+                    <span>(অতিরিক্ত ব্যবস্থাপনা পরিচালক)</span>
+                    <span>সিইও (ভারপ্রাপ্ত)</span>
+                </div>
+            </div>
+
             <script>window.print();</script>
         </body>
         </html>
@@ -349,12 +596,29 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
       {billItems.length > 0 && (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg border border-emerald-100 dark:border-gray-700 animate-in fade-in slide-in-from-bottom-4 duration-500 transition-colors">
           <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                পেমেন্ট তালিকা 
-                <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs px-2 py-1 rounded-full">{toBanglaDigits(billItems.length)} টি</span>
-            </h3>
+            <div className="flex flex-col gap-1">
+                <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                    পেমেন্ট তালিকা 
+                    <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs px-2 py-1 rounded-full">{toBanglaDigits(billItems.length)} টি</span>
+                </h3>
+                {lastSaved && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                        Auto-saved at: {lastSaved.toLocaleTimeString()}
+                    </span>
+                )}
+            </div>
             
-            <div className="flex flex-wrap justify-center gap-2">
+            <div className="flex flex-wrap justify-center items-center gap-2">
+                {/* Save Draft Button */}
+                {onSave && (
+                    <button 
+                      onClick={onSave}
+                      className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm font-bold text-xs"
+                    >
+                        <Save size={14} /> Save Draft
+                    </button>
+                )}
+
                 {/* Save Bill Button */}
                 {user && (
                     <button 
@@ -432,6 +696,11 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                     </div>
                   </th>
                   <th 
+                    className="p-4 w-32 text-center text-gray-500 dark:text-gray-400"
+                  >
+                    হিসাব
+                  </th>
+                  <th 
                     className="p-4 w-32 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
                     onClick={() => handleSort('amount')}
                   >
@@ -442,7 +711,7 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                       </span>
                     </div>
                   </th>
-                  <th className="p-4 w-10"></th>
+                  <th className="p-4 w-20 text-center"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -473,6 +742,15 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                     <td className="p-4">
                       <input
                         type="text"
+                        value={toBanglaDigits(item.calculation || '')}
+                        onChange={(e) => handleInputChange(idx, 'calculation', toEnglishDigits(e.target.value))}
+                        placeholder="৫০০+২০০"
+                        className="w-full p-2 border border-gray-100 dark:border-gray-700 rounded-lg text-center text-sm focus:border-emerald-500 dark:focus:border-emerald-500 outline-none bg-gray-50/50 dark:bg-gray-900/50 text-gray-800 dark:text-gray-100 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium"
+                      />
+                    </td>
+                    <td className="p-4">
+                      <input
+                        type="text"
                         value={toBanglaDigits(item.amount)}
                         onChange={(e) => handleInputChange(idx, 'amount', toEnglishDigits(e.target.value))}
                         placeholder="০"
@@ -480,12 +758,32 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                       />
                     </td>
                     <td className="p-2 text-center">
-                        <button 
-                            onClick={() => removeItem(idx)}
-                            className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-all sm:opacity-0 group-hover:opacity-100"
-                        >
-                            <CloseIcon size={16} />
-                        </button>
+                        <div className="flex items-center justify-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                                onClick={() => moveItemUp(idx)}
+                                disabled={idx === 0}
+                                className="text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 p-1.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all disabled:opacity-30 disabled:hover:bg-transparent"
+                                title="Move Up"
+                            >
+                                <ArrowUp size={14} />
+                            </button>
+                            <button 
+                                onClick={() => moveItemDown(idx)}
+                                disabled={idx === billItems.length - 1}
+                                className="text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 p-1.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all disabled:opacity-30 disabled:hover:bg-transparent"
+                                title="Move Down"
+                            >
+                                <ArrowDown size={14} />
+                            </button>
+                            <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700 mx-0.5"></div>
+                            <button 
+                                onClick={() => removeItem(idx)}
+                                className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 p-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                                title="Remove"
+                            >
+                                <CloseIcon size={16} />
+                            </button>
+                        </div>
                     </td>
                   </tr>
                 ))}

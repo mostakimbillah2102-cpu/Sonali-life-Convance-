@@ -261,7 +261,6 @@ export const BRANCH_DATABASE: BranchDatabase = {
     "350_dup": { branch: "ছয়লান মেট্রো", name: "মোঃ আলমগীর হোসেন", mobile: "০১৭৮৯০১২৩৪৫", ext: "৩৫০", email: "chhoylan.metro@sonalilife.com" },
     "365_dup": { branch: "বেগমগঞ্জ মেট্রো", name: "মোঃ জাহাঙ্গীর আলম", mobile: "০১৮৯০১২৩৪৫৬", ext: "৩৬৫", email: "begumganj.metro@sonalilife.com" },
     "380": { branch: "সেনবাগ মেট্রো", name: "মোঃ সজিব মিয়া", mobile: "০১৭৬৭৮৯০১২৩", ext: "৩৮০", email: "senbag2.metro@sonalilife.com" },
-    "395": { branch: "কমলনগর মেট্রো", name: "মোঃ রাশেদুল ইসলাম", mobile: "০১৮৭৮৯০১২৩৪", ext: "৩৯৫", email: "kamalnagar.metro@sonalilife.com" },
     "410": { branch: "হাতিয়া মেট্রো", name: "মোঃ সোহেল আহমেদ", mobile: "০১৭৮৯০১২৩৪৫", ext: "৪১০", email: "hatia.metro@sonalilife.com" },
     "425_dup": { branch: "সুবর্ণচর মেট্রো", name: "মোঃ আলমগীর হোসেন", mobile: "০১৮৯০১২৩৪৫৬", ext: "৪২৫", email: "subarnachar.metro@sonalilife.com" },
     "440": { branch: "নোয়াখালী সদর মেট্রো", name: "মোঃ জাহাঙ্গীর আলম", mobile: "০১৭৬৭৮৯০১২৩", ext: "৪৪০", email: "noakhalisadar.metro@sonalilife.com" },
@@ -282,7 +281,8 @@ export const BRANCH_DATABASE: BranchDatabase = {
     "665": { branch: "মতলব দক্ষিণ মেট্রো", name: "মোঃ জাহাঙ্গীর আলম", mobile: "০১৮৯০১২৩৪৫৬", ext: "৬৬৫", email: "matlabdakshin2.metro@sonalilife.com" },
     "680": { branch: "হাজীগঞ্জ মেট্রো", name: "মোঃ সজিব মিয়া", mobile: "০১৭৬৭৮৯০১২৩", ext: "৬৮০", email: "hajiganj3.metro@sonalilife.com" },
     "695": { branch: "ফরিদগঞ্জ মেট্রো", name: "মোঃ রাশেদুল ইসলাম", mobile: "০১৮৭৮৯০১২৩৪", ext: "৬৯৫", email: "faridganj2.metro@sonalilife.com" },
-    "710": { branch: "চাঁদপুর সদর মেট্রো", name: "মোঃ সোহেল আহমেদ", mobile: "০১৭৮৯০১২৩৪৫", ext: "৭১০", email: "chandpursadar2.metro@sonalilife.com" }
+    "710": { branch: "চাঁদপুর সদর মেট্রো", name: "মোঃ সোহেল আহমেদ", mobile: "০১৭৮৯০১২৩৪৫", ext: "৭১০", email: "chandpursadar2.metro@sonalilife.com" },
+    "681": { branch: "রানিগঞ্জ বাজার (মেট্রো)", name: "মোঃ ওসামন আলী", mobile: "N/A", ext: "N/A", email: "N/A" }
 };
 
 export const toEnglishDigits = (str: string): string => {

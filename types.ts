@@ -14,6 +14,7 @@ export interface BillItem extends BranchData {
   code: string; // The branch code
   serial: string; // User input for serial number
   amount: string; // User input for amount
+  calculation?: string; // User input for mathematical calculation
 }
 
 export interface ToastData {

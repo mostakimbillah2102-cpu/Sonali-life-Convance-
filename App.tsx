@@ -75,6 +75,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   // Test connection on boot
   useEffect(() => {
@@ -155,6 +156,24 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [isAuthReady, user]);
 
+  const saveToFirestore = async () => {
+    if (!user) return;
+    setIsSyncing(true);
+    try {
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        searchedToday,
+        lastSearchDate: new Date().toISOString(),
+        billDraft: JSON.stringify(billItems)
+      }, { merge: true });
+      setLastSaved(new Date());
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Auto-save to Firestore or LocalStorage
   useEffect(() => {
     // Recalculate total
@@ -167,22 +186,6 @@ const App: React.FC = () => {
     setTotalAmount(total);
 
     if (user) {
-      // Save to Firestore
-      const saveToFirestore = async () => {
-        setIsSyncing(true);
-        try {
-          await setDoc(doc(db, 'users', user.uid), {
-            uid: user.uid,
-            searchedToday,
-            lastSearchDate: new Date().toISOString(),
-            billDraft: JSON.stringify(billItems)
-          }, { merge: true });
-        } catch (error) {
-          handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
-        } finally {
-          setIsSyncing(false);
-        }
-      };
       // Debounce saving slightly to avoid too many writes
       const timeoutId = setTimeout(() => {
         saveToFirestore();
@@ -195,8 +198,24 @@ const App: React.FC = () => {
         count: searchedToday,
         date: new Date().toISOString()
       }));
+      setLastSaved(new Date());
     }
   }, [billItems, searchedToday, user]);
+
+  const handleManualSave = async () => {
+    if (user) {
+      await saveToFirestore();
+      addToast('ড্রাফট ক্লাউডে সেভ হয়েছে', 'success');
+    } else {
+      localStorage.setItem('sonali_bill_draft', JSON.stringify(billItems));
+      localStorage.setItem('sonali_stats', JSON.stringify({
+        count: searchedToday,
+        date: new Date().toISOString()
+      }));
+      setLastSaved(new Date());
+      addToast('ড্রাফট ব্রাউজারে সেভ হয়েছে', 'success');
+    }
+  };
 
   const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = Date.now();
@@ -214,6 +233,11 @@ const App: React.FC = () => {
   const handleAddToBill = (code: string, data: BranchData) => {
     const exists = billItems.some(item => item.code === code);
     
+    if (exists) {
+      addToast('এই ব্রাঞ্চটি ইতোমধ্যে লিস্টে যোগ করা আছে।', 'error');
+      return;
+    }
+
     setBillItems(prev => [
         ...prev, 
         { 
@@ -224,10 +248,7 @@ const App: React.FC = () => {
         }
     ]);
 
-    addToast(
-        exists ? 'ব্রাঞ্চটি আবারও লিস্টে যোগ করা হয়েছে।' : 'ব্রাঞ্চটি সফলভাবে লিস্টে যোগ করা হয়েছে!', 
-        'success'
-    );
+    addToast('ব্রাঞ্চটি সফলভাবে লিস্টে যোগ করা হয়েছে!', 'success');
   };
 
   const handleLogin = async () => {
@@ -295,6 +316,8 @@ const App: React.FC = () => {
                 totalAmount={totalAmount}
                 user={user}
                 addToast={addToast}
+                lastSaved={lastSaved}
+                onSave={handleManualSave}
             />
           </div>
         </div>
