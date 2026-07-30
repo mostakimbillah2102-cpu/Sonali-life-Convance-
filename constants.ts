@@ -2,6 +2,8 @@ import { BranchDatabase } from './types';
 
 // Large dataset handling
 export const BRANCH_DATABASE: BranchDatabase = {
+    "80": { branch: "লাখাই(মেট্রো)", name: "মোঃ ফয়সাল", mobile: "০১৭৭৯৫৫৮৭৩৮", ext: "-", email: "lakhai.metro@sonalilife.com" },
+    "660": { branch: "মোড়াকরি (মেট্রো)", name: "মোঃ ফয়েজ আহম্মেদ", mobile: "01790888890", ext: "-", email: "morakari.metro@sonalilife.com" },
     "1": { branch: "মতিঝিল (মেট্রো)", name: "নাজমুল হাসান", mobile: "০১৭১৭-৬৭০০৬৭", ext: "১০১", email: "motijheel@sonalilife.com" },
     "341": { branch: "গুলশান (মেট্রো)", name: "মোঃ হাবিব", mobile: "০১৭২৩-৬৮১২৮৩", ext: "১৯৭", email: "gulshan@sonalilife.com" },
     "285": { branch: "পঞ্চগড় (মেট্রো)", name: "সজিব আহমেদ", mobile: "০১৭১০-০০৮১৪৫", ext: "১৭৬", email: "panchagarh@sonalilife.com" },
