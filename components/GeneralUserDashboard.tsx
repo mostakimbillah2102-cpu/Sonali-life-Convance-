@@ -12,7 +12,6 @@ import {
   Paperclip, 
   Printer, 
   Search, 
-  ShieldAlert, 
   QrCode, 
   RefreshCw,
   Edit
@@ -171,33 +170,7 @@ export const GeneralUserDashboard: React.FC<GeneralUserDashboardProps> = ({
   return (
     <div className="space-y-6">
       
-      {/* Policy Security Notice Box */}
-      <div className="bg-gradient-to-r from-blue-500/10 via-indigo-500/5 to-emerald-500/10 dark:from-blue-950/40 dark:to-emerald-950/40 border border-blue-200 dark:border-blue-800/80 p-5 rounded-3xl shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-md shadow-blue-600/20 shrink-0">
-              <ShieldAlert size={22} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
-                  সাধারণ ব্যবহারকারী পোর্টাল (General User Portal)
-                </h2>
-                <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold px-2.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
-                  <CheckCircle2 size={12} className="text-emerald-600 dark:text-emerald-400" />
-                  <span>শাখা আনলক: যেকোনো শাখার বিল দাখিল ও পর্যবেক্ষণ সম্ভব</span>
-                </span>
-              </div>
-              <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
-                নিরাপত্তা নীতি অনুযায়ী <strong>দ্রুত অনুসন্ধান (Single Search)</strong>, <strong>তারিখ টু তারিখ রিপোর্ট ও অটো বিল</strong> এবং <strong>বিল / তালিকা তৈরি (Custom List)</strong> ফিচারগুলো শুধুমাত্র নির্ধারিত হেড অফিস অ্যাডমিনদের (<code className="bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded font-mono text-[11px] font-bold text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-gray-700">sonalilifegroupclaim@gmail.com</code> &amp; <code className="bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded font-mono text-[11px] font-bold text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-gray-700">mostakim.billah2102@gmail.com</code>) জন্য নির্ধারিত। 
-              </p>
-              <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mt-1">
-                ✓ যেকোনো শাখা নির্বাচন করে ভাউচার ও খরচের বিল তৈরি করে সরাসরি হেড অফিসে দাখিল করতে পারবেন এবং জমাকৃত বিলের রিয়েল-টাইম অগ্রগতি পর্যবেক্ষণ করতে পারবেন।
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+
 
       {/* Main Action Cards & Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
