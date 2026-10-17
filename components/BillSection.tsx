@@ -1,11 +1,33 @@
 import { useState, useEffect } from 'react';
-import { FileSpreadsheet, Printer, Trash2, AlertCircle, Plus, Eraser, RotateCcw as ResetIcon, Check, X as CloseIcon, ArrowUp, ArrowDown, ArrowUpDown, User, Save, FolderOpen, Download } from 'lucide-react';
-import { BRANCH_DATABASE, toBanglaDigits, toEnglishDigits } from '../constants';
-import { BillItem } from '../types';
+import { 
+  FileSpreadsheet, 
+  Trash2, 
+  AlertCircle, 
+  Plus, 
+  Eraser, 
+  RotateCcw as ResetIcon, 
+  Check, 
+  X as CloseIcon, 
+  ArrowUp, 
+  ArrowDown, 
+  ArrowUpDown, 
+  User, 
+  Save, 
+  FolderOpen, 
+  Download, 
+  Eye, 
+  Sliders, 
+  Share2, 
+  Calculator,
+  QrCode
+} from 'lucide-react';
+import { BRANCH_DATABASE, DEFAULT_VOUCHER_CONFIG, toBanglaDigits, toEnglishDigits } from '../constants';
+import { BillItem, BranchDatabase, VoucherConfig } from '../types';
 import { User as FirebaseUser } from 'firebase/auth';
-import { db } from '../firebase';
-import { doc, setDoc } from 'firebase/firestore';
 import SavedBillsModal from './SavedBillsModal';
+import PrintPreviewModal from './PrintPreviewModal';
+import VoucherSettingsModal from './VoucherSettingsModal';
+import SaveBillModal from './SaveBillModal';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
@@ -17,24 +39,60 @@ interface BillSectionProps {
   addToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   lastSaved?: Date | null;
   onSave?: () => Promise<void>;
+  branchesMap?: BranchDatabase;
+  voucherConfig?: VoucherConfig;
+  onUpdateVoucherConfig?: (config: VoucherConfig) => void;
+  onOpenMergeBills?: () => void;
+  onOpenTracking?: (trackingId?: string) => void;
 }
 
-const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, totalAmount, user, addToast, lastSaved, onSave }) => {
+const BillSection: React.FC<BillSectionProps> = ({ 
+  billItems, 
+  setBillItems, 
+  totalAmount, 
+  user, 
+  addToast, 
+  lastSaved, 
+  onSave,
+  branchesMap = BRANCH_DATABASE,
+  voucherConfig = DEFAULT_VOUCHER_CONFIG,
+  onUpdateVoucherConfig,
+  onOpenMergeBills,
+  onOpenTracking
+}) => {
   const [inputCodes, setInputCodes] = useState('');
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState('');
   const [notFoundCodes, setNotFoundCodes] = useState<string[]>([]);
   
-  // States for confirmation
+  // Modal states
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isSavedBillsModalOpen, setIsSavedBillsModalOpen] = useState(false);
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const [isVoucherSettingsOpen, setIsVoucherSettingsOpen] = useState(false);
 
   type SortField = 'branch' | 'serial' | 'amount' | null;
   type SortOrder = 'asc' | 'desc';
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+
+  // Keyboard shortcut Ctrl+S for bill save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (billItems.length > 0) {
+          setIsSaveModalOpen(true);
+        } else {
+          addToast('সেভ করার মতো কোনো শাখা আইটেম নেই', 'info');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [billItems.length, addToast]);
 
   // Auto-reset confirmation buttons after 3 seconds
   useEffect(() => {
@@ -67,15 +125,17 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
       const duplicates: string[] = [];
 
       codes.forEach(code => {
-        if (BRANCH_DATABASE[code]) {
+        const branchData = branchesMap[code] || BRANCH_DATABASE[code];
+        if (branchData) {
           if (billItems.some(item => item.code === code) || newItems.some(item => item.code === code)) {
             duplicates.push(toBanglaDigits(code));
           } else {
             newItems.push({
-              ...BRANCH_DATABASE[code],
+              ...branchData,
               code: code,
               serial: '',
-              amount: ''
+              amount: '',
+              calculation: ''
             });
           }
         } else {
@@ -91,7 +151,10 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
       if (duplicates.length > 0) {
         addToast(`ইতোমধ্যে লিস্টে আছে: ${duplicates.join(', ')}`, 'info');
       }
-    }, 400);
+      if (newItems.length > 0) {
+        addToast(`${toBanglaDigits(newItems.length)} টি ব্রাঞ্চ যোগ করা হয়েছে`, 'success');
+      }
+    }, 200);
   };
 
   const handleInputChange = (index: number, field: 'serial' | 'amount' | 'calculation', value: string) => {
@@ -104,7 +167,7 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
         const englishCalc = toEnglishDigits(value);
         if (/^[0-9+\-*/.\s()]+$/.test(englishCalc) && englishCalc.trim() !== '') {
           // eslint-disable-next-line no-eval
-          const result = eval(englishCalc);
+          const result = Function(`'use strict'; return (${englishCalc})`)();
           if (typeof result === 'number' && !isNaN(result)) {
             newItems[index].amount = Math.round(result).toString();
           }
@@ -127,6 +190,7 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
       setBillItems([]);
       setNote('');
       setIsConfirmingClear(false);
+      addToast('সব ব্রাঞ্চ মুছে ফেলা হয়েছে', 'info');
     } else {
       setIsConfirmingClear(true);
     }
@@ -134,9 +198,10 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
 
   const handleResetData = () => {
     if (isConfirmingReset) {
-      const resetItems = billItems.map(item => ({ ...item, serial: '', amount: '' }));
+      const resetItems = billItems.map(item => ({ ...item, serial: '', amount: '', calculation: '' }));
       setBillItems(resetItems);
       setIsConfirmingReset(false);
+      addToast('সিরিয়াল ও টাকার ঘর রিসেট করা হয়েছে', 'info');
     } else {
       setIsConfirmingReset(true);
     }
@@ -150,426 +215,179 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
     setSortField(field);
     setSortOrder(newOrder);
 
-    const sortedItems = [...billItems].sort((a, b) => {
-      let valA: any = a[field];
-      let valB: any = b[field];
-
-      if (field === 'amount' || field === 'serial') {
-        valA = parseFloat(toEnglishDigits(valA?.toString().replace(/,/g, '') || '')) || 0;
-        valB = parseFloat(toEnglishDigits(valB?.toString().replace(/,/g, '') || '')) || 0;
-      } else {
-        valA = valA.toString().toLowerCase();
-        valB = valB.toString().toLowerCase();
+    const sorted = [...billItems].sort((a, b) => {
+      if (field === 'branch') {
+        return newOrder === 'asc' 
+          ? a.branch.localeCompare(b.branch, 'bn')
+          : b.branch.localeCompare(a.branch, 'bn');
       }
-
-      if (valA < valB) return newOrder === 'asc' ? -1 : 1;
-      if (valA > valB) return newOrder === 'asc' ? 1 : -1;
+      if (field === 'serial') {
+        const numA = parseInt(toEnglishDigits(a.serial || '0'), 10) || 0;
+        const numB = parseInt(toEnglishDigits(b.serial || '0'), 10) || 0;
+        return newOrder === 'asc' ? numA - numB : numB - numA;
+      }
+      if (field === 'amount') {
+        const numA = parseFloat(toEnglishDigits(a.amount || '0')) || 0;
+        const numB = parseFloat(toEnglishDigits(b.amount || '0')) || 0;
+        return newOrder === 'asc' ? numA - numB : numB - numA;
+      }
       return 0;
     });
 
-    setBillItems(sortedItems);
+    setBillItems(sorted);
   };
 
-  const moveItemUp = (index: number) => {
-    if (index === 0) return;
+  const moveItemUp = (idx: number) => {
+    if (idx === 0) return;
     const newItems = [...billItems];
-    const temp = newItems[index];
-    newItems[index] = newItems[index - 1];
-    newItems[index - 1] = temp;
+    const temp = newItems[idx - 1];
+    newItems[idx - 1] = newItems[idx];
+    newItems[idx] = temp;
     setBillItems(newItems);
   };
 
-  const moveItemDown = (index: number) => {
-    if (index === billItems.length - 1) return;
+  const moveItemDown = (idx: number) => {
+    if (idx === billItems.length - 1) return;
     const newItems = [...billItems];
-    const temp = newItems[index];
-    newItems[index] = newItems[index + 1];
-    newItems[index + 1] = temp;
+    const temp = newItems[idx + 1];
+    newItems[idx + 1] = newItems[idx];
+    newItems[idx] = temp;
     setBillItems(newItems);
-  };
-
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if(!printWindow) return;
-
-    const monthNamesBn = ["জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
-    const d = new Date();
-    const currentMonthBn = monthNamesBn[d.getMonth()];
-    
-    const dateStr = toBanglaDigits(`${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`) + 'ইং';
-    const yearStr = toBanglaDigits(d.getFullYear().toString());
-
-    const tableRows = billItems.map((item, idx) => `
-        <tr>
-            <td style="text-align:center">${toBanglaDigits(idx + 1)}</td>
-            <td style="text-align:center">${item.branch}</td>
-            <td style="text-align:center">${toBanglaDigits(item.serial) || '-'}</td>
-            <td style="text-align:center">যাতায়াত</td>
-            <td style="text-align:center">${currentMonthBn}</td>
-            <td style="text-align:center">সহযোগী বীমা দাবি</td>
-            <td style="text-align:center">${item.name}</td>
-            <td style="text-align:center">${item.amount ? toBanglaDigits(item.amount) : '০'}</td>
-        </tr>
-    `).join('');
-
-    const htmlContent = `
-        <!DOCTYPE html>
-        <html lang="bn">
-        <head>
-            <meta charset="UTF-8">
-            <title>সোনালী লাইফ - বিল তালিকা</title>
-            <style>
-                @import url('https://fonts.googleapis.com/css2?family=Tiro+Bangla&display=swap');
-                body { 
-                    font-family: 'Tiro Bangla', serif; 
-                    padding: 40px 60px; 
-                    color: #000; 
-                    font-size: 14px;
-                    line-height: 1.5;
-                }
-                .header-container {
-                    display: flex;
-                    align-items: center;
-                    gap: 15px;
-                    margin-bottom: 20px;
-                }
-                .header-logo {
-                    width: 70px;
-                    flex-shrink: 0;
-                }
-                .header-text-container {
-                    flex-grow: 1;
-                }
-                .logo-text-bn {
-                    color: #c48c36; 
-                    font-size: 38px; 
-                    font-weight: bold; 
-                    margin: 0;
-                    line-height: 1.1;
-                }
-                .logo-text-en {
-                    color: #7ab83e; 
-                    font-size: 20px; 
-                    margin: 0; 
-                    font-family: 'Arial', sans-serif;
-                    letter-spacing: 0.5px;
-                }
-                .sub-header {
-                    display: flex;
-                    justify-content: space-between;
-                    font-size: 14px;
-                    color: #444;
-                    margin-top: 5px;
-                }
-                .sli-text {
-                    color: #c48c36;
-                    font-style: italic;
-                    font-weight: bold;
-                    margin-right: 5px;
-                    font-family: 'Arial', sans-serif;
-                }
-                .reg-text {
-                    color: #c48c36;
-                }
-                .meta-row {
-                    display: flex;
-                    justify-content: space-between;
-                    margin-top: 10px;
-                    font-size: 13px;
-                }
-                .note-sheet-title {
-                    text-align: center;
-                    font-weight: bold;
-                    font-size: 16px;
-                    margin: 15px 0;
-                }
-                .subject {
-                    font-weight: bold;
-                    margin-bottom: 10px;
-                    text-decoration: underline;
-                }
-                .paragraph {
-                    text-align: justify;
-                    margin-bottom: 20px;
-                }
-                table { 
-                    width: 100%; 
-                    border-collapse: collapse; 
-                    margin-top: 15px; 
-                    font-size: 13px; 
-                }
-                th, td { 
-                    border: 1px solid #000; 
-                    padding: 6px; 
-                }
-                th { 
-                    text-align: center;
-                    font-weight: bold;
-                }
-                .total-row { 
-                    font-weight: bold; 
-                }
-                .conclusion {
-                    margin-top: 20px;
-                    text-align: justify;
-                }
-                .signatures {
-                    margin-top: 60px;
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    row-gap: 80px;
-                    text-align: center;
-                    font-size: 13px;
-                }
-                .sig-box {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                }
-                .sig-line {
-                    border-top: 1px solid #000;
-                    width: 80%;
-                    margin-bottom: 5px;
-                }
-                @media print {
-                    body { padding: 0; }
-                    @page { margin: 20mm; }
-                }
-            </style>
-        </head>
-        <body>
-            <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #c48c36; padding-bottom: 10px;">
-                <img src="${window.location.origin}/header-logo.png" onerror="this.style.display='none'; document.getElementById('css-header').style.display='block';" style="width: 100%; max-width: 700px; margin: 0 auto; display: block;" alt="Sonali Life Insurance" />
-                
-                <div id="css-header" class="header-container" style="display: none;">
-                    <div class="header-text-container" style="text-align: center;">
-                        <h1 class="logo-text-bn">সোনালী লাইফ ইন্স্যুরেন্স কোম্পানী লিমিটেড</h1>
-                        <h2 class="logo-text-en">SONALI LIFE INSURANCE COMPANY LIMITED</h2>
-                        <div class="sub-header">
-                            <span><strong class="sli-text">SLI</strong> ইসলামী শরিয়াহ্ মোতাবেক পরিচালিত জীবন বীমা কোম্পানী</span>
-                            <span class="reg-text">সরকারী নিবন্ধন নম্বরঃ লাইফ ০২/২০১৩</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="meta-row">
-                <span>সূত্র নংঃ এসএলআইসিএল/দাঃ বিঃ/নোঃ শীঃ/৩৭২১/${yearStr}ইং</span>
-                <span>তারিখঃ ${dateStr}</span>
-            </div>
-
-            <div class="note-sheet-title"><u>নোট শীট</u></div>
-
-            <div class="subject">
-                বিষয়ঃ সোনালী লাইফ ইন্স্যুরেন্স কোম্পানী লিমিটেডের দাবী নিষ্পত্তির ক্ষেত্রে শাখা অফিসারদের যাতায়াত ও আপ্যায়ন বিল পরিশোধের অনুমোদন প্রদান প্রসঙ্গে।
-            </div>
-
-            <div class="paragraph">
-                সোনালী লাইফ ইন্স্যুরেন্স কোম্পানী লিমিটেড এর দাবী নিষ্পত্তির ক্ষেত্রে শাখা অফিসের কর্মকর্তাগণ দাবী তদন্ত করে থাকেন। সেই আলোকে শাখা অফিসারদের যাতায়াত ও আপ্যায়ন বিল নিম্নোক্ত ছক অনুযায়ী সর্বমোট = ${toBanglaDigits(totalAmount)}/- টাকা অনুমোদনের প্রয়োজনীয়তা পরিলক্ষিত হয়।
-            </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 5%">ক্রঃনং</th>
-                        <th style="width: 15%">অফিসের নাম</th>
-                        <th style="width: 10%">ক্রমিক নং</th>
-                        <th style="width: 12%">বিলের ধরন</th>
-                        <th style="width: 10%">মাসের নাম</th>
-                        <th style="width: 15%">দাবীর ধরন</th>
-                        <th style="width: 23%">অফিসারের নাম</th>
-                        <th style="width: 10%">টাকা</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${tableRows}
-                    <tr class="total-row">
-                        <td colspan="7" style="text-align:right; border: 1px solid #000; padding-right: 10px;">মোট বিল=</td>
-                        <td style="text-align:center; border: 1px solid #000;">${toBanglaDigits(totalAmount)}</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <div class="conclusion">
-                এমতাবস্থায় উপরোক্ত ছক অনুযায়ী শাখা অফিসের অফিসারদের বীমাদাবী তদন্তের যাতায়াত বিল বাবদ সর্বমোট = ${toBanglaDigits(totalAmount)}/- টাকা অনুমোদনের বিষয়ে কর্তৃপক্ষের সিদ্ধান্তের লক্ষ্যে নথি পেশ করা হলো।
-            </div>
-
-            <div class="signatures">
-                <div class="sig-box">
-                    <div class="sig-line"></div>
-                    <strong>নথি উত্থাপনকারী</strong>
-                    <span>সিনিয়র অফিসার দাবীবিভাগ</span>
-                </div>
-                <div class="sig-box">
-                    <div class="sig-line"></div>
-                    <strong>মোঃ শাহিদুর রহমান</strong>
-                    <span>(ভাইস প্রেসিডেন্ট),</span>
-                    <span>ইনচার্জ, দাবীবিভাগ</span>
-                </div>
-                <div class="sig-box">
-                    <div class="sig-line"></div>
-                    <strong>অভ্যন্তরীণ নিরীক্ষা বিভাগ</strong>
-                </div>
-
-                <div class="sig-box">
-                    <div class="sig-line"></div>
-                    <strong>মোহাম্মদ মঞ্জুর মোর্শেদ</strong>
-                    <span>(সিওও)</span>
-                </div>
-                <div class="sig-box">
-                    <div class="sig-line"></div>
-                    <strong>মোহাম্মদ আব্দুল হান্নান</strong>
-                    <span>(ডিএমডি এন্ড সিএফও)</span>
-                </div>
-                <div class="sig-box">
-                    <div class="sig-line"></div>
-                    <strong>মোঃ রফিকুল ইসলাম</strong>
-                    <span>(অতিরিক্ত ব্যবস্থাপনা পরিচালক)</span>
-                    <span>সিইও (ভারপ্রাপ্ত)</span>
-                </div>
-            </div>
-
-            <script>window.print();</script>
-        </body>
-        </html>
-    `;
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
   };
 
   const handleDownloadPDF = () => {
     const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Sonali Life Insurance - Bill Voucher', 14, 20);
     
-    // Add title
-    doc.setFontSize(18);
-    doc.text('Sonali Life Insurance - Payment List', 14, 22);
-    
-    // Define table columns and data
-    const tableColumn = ["#", "Code", "Branch", "Name", "Mobile", "Serial", "Amount"];
+    const tableColumn = ["#", "Code", "Branch", "Name", "Mobile", "Serial", "Amount (Tk)"];
     const tableRows = billItems.map((item, idx) => [
       idx + 1,
       item.code,
       item.branch,
       item.name,
-      item.mobile,
+      item.mobile || '-',
       item.serial || '-',
       item.amount || '0'
     ]);
 
-    // Add total row
-    tableRows.push(['', '', '', '', '', 'Total:', totalAmount.toString()]);
-
-    // Generate table
-    (doc as any).autoTable({
+    // @ts-ignore
+    doc.autoTable({
       head: [tableColumn],
       body: tableRows,
-      startY: 30,
+      startY: 28,
       theme: 'grid',
-      styles: { fontSize: 10, cellPadding: 3 },
-      headStyles: { fillColor: [4, 120, 87] }, // Emerald 700
-      columnStyles: {
-        0: { halign: 'center' },
-        1: { halign: 'center' },
-        5: { halign: 'center' },
-        6: { halign: 'right', fontStyle: 'bold' }
-      },
-      didParseCell: function (data: any) {
-        // Make total row bold
-        if (data.row.index === tableRows.length - 1) {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [240, 253, 244]; // Emerald 50
-        }
-      }
+      headStyles: { fillColor: [40, 167, 69] },
+      foot: [['', '', '', '', '', 'Total:', totalAmount.toString()]],
+      footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
     });
 
-    // Add note if exists
-    if (note) {
-      const finalY = (doc as any).lastAutoTable.finalY || 30;
-      doc.setFontSize(10);
-      doc.text(`Note: ${note}`, 14, finalY + 10);
-    }
-
-    doc.save('sonali_list.pdf');
+    doc.save(`sonali_life_bill_${Date.now()}.pdf`);
+    addToast('PDF ফাইল ডাউনলোড হচ্ছে...', 'success');
   };
 
   const handleDownloadCSV = () => {
-    let content = "\uFEFFক্রমিক,কোড,শাখা,নাম,মোবাইল,সিরিয়াল,টাকা\n";
+    let content = "\uFEFFক্রমিক,কোড,শাখা,কর্মকর্তা,মোবাইল,সিরিয়াল নং,টাকা\n";
     billItems.forEach((item, idx) => {
-        content += `"${toBanglaDigits(idx+1)}","${toBanglaDigits(item.code)}","${item.branch}","${item.name}","${item.mobile}","${item.serial}","${toBanglaDigits(item.amount || 0)}"\n`;
+      content += `"${toBanglaDigits(idx + 1)}","${toBanglaDigits(item.code)}","${item.branch}","${item.name}","${toBanglaDigits(item.mobile || '')}","${toBanglaDigits(item.serial || '')}","${toBanglaDigits(item.amount || '0')}"\n`;
     });
+    content += `,,,,,"সর্বমোট=","${toBanglaDigits(totalAmount)}"\n`;
+
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `sonali_list.csv`;
+    link.download = `sonali_bill_${Date.now()}.csv`;
     link.click();
+    addToast('Excel/CSV ফাইল ডাউনলোড সম্পন্ন হয়েছে', 'success');
   };
 
-  const handleSaveBill = async () => {
-    if (!user) {
-      addToast('বিল সেভ করতে প্রথমে লগইন করুন', 'error');
-      return;
+  const handleCopySummaryWhatsApp = () => {
+    let msg = `*সোনালী লাইফ ইন্স্যুরেন্স - পেমেন্ট ভাউচার সারসংক্ষেপ*\n`;
+    msg += `তারিখ: ${new Date().toLocaleDateString('bn-BD')}\n`;
+    msg += `মোট শাখা: ${toBanglaDigits(billItems.length)} টি | সর্বমোট: ৳${toBanglaDigits(totalAmount)}\n\n`;
+    billItems.forEach((item, idx) => {
+      msg += `${toBanglaDigits(idx + 1)}. ${item.branch} (${toBanglaDigits(item.code)}) - ${item.name}: ৳${toBanglaDigits(item.amount || '0')}\n`;
+    });
+    if (note) {
+      msg += `\n*নোট:* ${note}\n`;
     }
+
+    navigator.clipboard.writeText(msg).then(() => {
+      addToast('হোয়াটসঅ্যাপ সামারি ক্লিপবোর্ডে কপি করা হয়েছে!', 'success');
+    }).catch(() => {
+      addToast('ক্লিপবোর্ডে কপি করতে সমস্যা হয়েছে', 'error');
+    });
+  };
+
+  const handleSaveBill = () => {
     if (billItems.length === 0) {
-      addToast('সেভ করার মতো কোনো ব্রাঞ্চ নেই', 'error');
+      addToast('সেভ করার মতো কোনো শাখা আইটেম নেই', 'error');
       return;
     }
-
-    const billName = window.prompt('এই বিলটির একটি নাম দিন (যেমন: জানুয়ারি মাসের বিল):');
-    if (!billName || !billName.trim()) return;
-
-    setIsSaving(true);
-    try {
-      const billId = Date.now().toString();
-      await setDoc(doc(db, `users/${user.uid}/savedBills`, billId), {
-        id: billId,
-        uid: user.uid,
-        name: billName.trim(),
-        items: JSON.stringify(billItems),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-      addToast('বিল সফলভাবে সেভ হয়েছে!', 'success');
-    } catch (error) {
-      console.error("Error saving bill:", error);
-      addToast('বিল সেভ করতে সমস্যা হয়েছে', 'error');
-    } finally {
-      setIsSaving(false);
-    }
+    setIsSaveModalOpen(true);
   };
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg border border-emerald-100 dark:border-gray-700 transition-colors">
-        <div className="flex items-center justify-between mb-6 border-b border-gray-100 dark:border-gray-700 pb-4">
+      {/* Input Card */}
+      <div className="bg-white dark:bg-gray-800 p-5 sm:p-7 rounded-3xl shadow-xl border border-emerald-100 dark:border-gray-700 transition-colors">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-5 border-b border-gray-100 dark:border-gray-700 pb-4 gap-3">
           <div className="flex items-center gap-3">
-            <span className="bg-orange-500 text-white w-8 h-8 flex items-center justify-center rounded-full font-bold">২</span>
-            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">বিল / তালিকা তৈরি (Custom List)</h2>
+            <span className="bg-orange-500 text-white w-9 h-9 flex items-center justify-center rounded-2xl font-bold shadow-md shadow-orange-500/20">২</span>
+            <div>
+              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">বিল / তালিকা তৈরি <span className="text-base font-semibold text-orange-600 dark:text-orange-400 font-sans">(Custom List)</span></h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">একাধিক শাখা কোড দিয়ে দ্রুত বিল শিট তৈরি করুন</p>
+            </div>
           </div>
-          {user && (
+
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+            {onOpenTracking && (
+              <button 
+                onClick={() => onOpenTracking(voucherConfig.trackingId)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl font-bold text-xs transition-all border border-emerald-200 dark:border-emerald-800 shadow-sm active:scale-95"
+                title="বিলের কিউআর কোড ও অনলাইন ট্র্যাকিং স্ট্যাটাস"
+              >
+                <QrCode size={15} />
+                <span>কিউআর ট্র্যাকিং</span>
+              </button>
+            )}
+
+            <button 
+              onClick={() => setIsVoucherSettingsOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 rounded-xl font-bold text-xs transition-all border border-purple-200 dark:border-purple-800"
+              title="নোট শীট ও সাক্ষর কাস্টমাইজেশন"
+            >
+              <Sliders size={15} />
+              <span>ভাউচার ফরম্যাট</span>
+            </button>
+
             <button 
               onClick={() => setIsSavedBillsModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl font-bold text-sm transition-all border border-blue-100 dark:border-blue-800"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl font-bold text-xs transition-all border border-blue-200 dark:border-blue-800"
             >
-              <FolderOpen size={16} />
-              সেভ করা বিল
+              <FolderOpen size={15} />
+              <span>সেভ করা বিল</span>
             </button>
-          )}
+          </div>
         </div>
 
         <div className="mb-4">
-          <label className="block text-gray-700 dark:text-gray-300 font-medium mb-2">বাল্ক কোড ইনপুট (কমা দিয়ে আলাদা করুন)</label>
+          <label className="block text-gray-700 dark:text-gray-300 font-bold text-xs sm:text-sm mb-2">
+            বাল্ক কোড ইনপুট (কমা, স্পেস বা নতুন লাইনে কোড লিখুন)
+          </label>
           <div className="relative">
             <textarea
                 value={inputCodes}
                 onChange={(e) => setInputCodes(e.target.value)}
-                placeholder="যেমন: ৩৪১, ২৮৫, ১৮৫, ২৮৪"
-                className="w-full h-24 p-4 border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 rounded-xl focus:border-orange-500 dark:focus:border-orange-500 focus:ring-0 outline-none transition-all resize-none text-lg"
+                placeholder="যেমন: ৩৪১, ২৮৫, ১৮৫, ২৮৪, ৪৫৩..."
+                className="w-full h-24 p-4 border-2 border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 rounded-2xl focus:border-orange-500 dark:focus:border-orange-500 focus:bg-white dark:focus:bg-gray-800 outline-none transition-all resize-none text-base sm:text-lg font-mono font-medium"
             />
             {inputCodes && (
                 <button 
                     onClick={() => setInputCodes('')}
-                    className="absolute top-3 right-3 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-gray-800 p-1 rounded-full shadow-sm"
+                    className="absolute top-3 right-3 text-gray-400 hover:text-red-500 bg-white dark:bg-gray-800 p-1.5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700"
+                    title="ক্লিয়ার করুন"
                 >
                     <Eraser size={16} />
                 </button>
@@ -580,63 +398,83 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
         <button
           onClick={handleGenerateList}
           disabled={loading || !inputCodes.trim()}
-          className="w-full bg-orange-500 hover:bg-orange-600 text-white px-6 py-4 rounded-xl font-bold shadow-md shadow-orange-100 dark:shadow-orange-900/20 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+          className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6 py-3.5 rounded-2xl font-bold shadow-lg shadow-orange-500/25 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
         >
-          {loading ? 'প্রসেসিং...' : <><Plus size={20} /> যোগ করুন</>}
+          {loading ? 'প্রসেসিং হচ্ছে...' : <><Plus size={20} /> তালিকায় যোগ করুন</>}
         </button>
         
         {notFoundCodes.length > 0 && (
-            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg flex items-start gap-2 text-sm border border-red-100 dark:border-red-800/50 animate-in fade-in">
-                <AlertCircle size={16} className="mt-1 flex-shrink-0" />
-                <span>পাওয়া যায়নি: {notFoundCodes.join(', ')}</span>
+            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl flex items-start gap-2 text-xs sm:text-sm border border-red-200 dark:border-red-800/50 animate-in fade-in">
+                <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                <span>পাওয়া যায়নি এমন কোড: {notFoundCodes.join(', ')}</span>
             </div>
         )}
       </div>
 
+      {/* Bill Table Card */}
       {billItems.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg border border-emerald-100 dark:border-gray-700 animate-in fade-in slide-in-from-bottom-4 duration-500 transition-colors">
-          <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+        <div className="bg-white dark:bg-gray-800 p-5 sm:p-7 rounded-3xl shadow-xl border border-emerald-100 dark:border-gray-700 animate-in fade-in slide-in-from-bottom-4 duration-500 transition-colors">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4 border-b border-gray-100 dark:border-gray-700 pb-4">
             <div className="flex flex-col gap-1">
-                <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                    পেমেন্ট তালিকা 
-                    <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs px-2 py-1 rounded-full">{toBanglaDigits(billItems.length)} টি</span>
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                    পেমেন্ট তালিকা
+                  </h3>
+                  <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs px-2.5 py-0.5 rounded-full font-bold font-mono">
+                    {toBanglaDigits(billItems.length)} টি শাখা
+                  </span>
+                  <span className="bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-bold font-mono">
+                    সর্বমোট: ৳{toBanglaDigits(totalAmount)}
+                  </span>
+                </div>
                 {lastSaved && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                        Auto-saved at: {lastSaved.toLocaleTimeString()}
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                      অটো-সেভ: {lastSaved.toLocaleTimeString('bn-BD')}
                     </span>
                 )}
             </div>
             
-            <div className="flex flex-wrap justify-center items-center gap-2">
+            {/* Toolbar Buttons */}
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
                 {/* Save Draft Button */}
                 {onSave && (
                     <button 
                       onClick={onSave}
-                      className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm font-bold text-xs"
+                      className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-sm font-bold text-xs active:scale-95"
+                      title="অটো ড্রাফট সেভ করুন"
                     >
-                        <Save size={14} /> Save Draft
+                        <Save size={14} /> 
+                        <span className="hidden sm:inline">ড্রাফট সেভ</span>
                     </button>
                 )}
 
-                {/* Save Bill Button */}
-                {user && (
-                    <button 
-                      onClick={handleSaveBill}
-                      disabled={isSaving}
-                      className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-bold text-xs disabled:opacity-50"
-                    >
-                        <Save size={14} /> {isSaving ? 'সেভ হচ্ছে...' : 'সেভ করুন'}
-                    </button>
-                )}
+                {/* Save Named Bill Button */}
+                <button 
+                  onClick={handleSaveBill}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-sm font-bold text-xs active:scale-95"
+                  title="বিল অনলাইন বা লোকাল ডাটাবেজে সংরক্ষণ করুন (Ctrl + S)"
+                >
+                    <Save size={14} /> 
+                    <span>সেভ করুন</span>
+                </button>
+
+                {/* WhatsApp Share */}
+                <button 
+                  onClick={handleCopySummaryWhatsApp}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl transition-all shadow-sm font-bold text-xs active:scale-95"
+                  title="হোয়াটসঅ্যাপ মেসেজ ফরম্যাট কপি করুন"
+                >
+                    <Share2 size={14} />
+                    <span className="hidden sm:inline">শেয়ার</span>
+                </button>
 
                 {/* 2-Step Reset Button */}
                 <button 
                   onClick={handleResetData} 
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all shadow-sm font-bold text-xs border ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all shadow-sm font-bold text-xs border ${
                     isConfirmingReset 
                     ? 'bg-amber-500 text-white border-amber-600 scale-105' 
-                    : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100'
                   }`}
                 >
                     {isConfirmingReset ? <><Check size={14} /> নিশ্চিত?</> : <><ResetIcon size={14} /> রিসেট</>}
@@ -645,170 +483,210 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
                 {/* 2-Step Clear All Button */}
                 <button 
                   onClick={handleClearAll} 
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all shadow-sm font-bold text-xs border ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all shadow-sm font-bold text-xs border ${
                     isConfirmingClear 
                     ? 'bg-red-600 text-white border-red-700 scale-105 animate-pulse' 
-                    : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800/50 hover:bg-red-600 hover:text-white dark:hover:bg-red-800 dark:hover:text-white'
+                    : 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300 border-red-200 dark:border-red-800 hover:bg-red-600 hover:text-white'
                   }`}
                 >
-                    {isConfirmingClear ? <><Check size={14} /> মুছুন?</> : <><Trash2 size={14} /> সব মুছুন</>}
+                    {isConfirmingClear ? <><Check size={14} /> মুছবেন?</> : <><Trash2 size={14} /> সব মুছুন</>}
                 </button>
 
-                <div className="w-[1px] h-8 bg-gray-200 dark:bg-gray-700 mx-1 hidden sm:block"></div>
+                <div className="w-[1px] h-6 bg-gray-200 dark:bg-gray-700 mx-0.5 hidden sm:block"></div>
                 
-                <button onClick={handleDownloadPDF} className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm font-bold text-xs">
-                    <Download size={14} /> PDF
+                {/* Print Preview Button (Opens interactive modal) */}
+                <button 
+                  onClick={() => setIsPrintPreviewOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl transition-all shadow-md shadow-purple-600/20 font-bold text-xs active:scale-95"
+                >
+                    <Eye size={14} /> 
+                    <span>প্রিভিউ ও প্রিন্ট <span className="font-sans font-normal opacity-90">(Print)</span></span>
                 </button>
-                <button onClick={handleDownloadCSV} className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm font-bold text-xs">
-                    <FileSpreadsheet size={14} /> Excel
+
+                <button 
+                  onClick={handleDownloadPDF} 
+                  className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all shadow-sm font-bold text-xs active:scale-95 font-sans"
+                  title="PDF ডাউনলোড"
+                >
+                    <Download size={14} /> 
+                    <span className="hidden sm:inline">PDF ডাউনলোড</span>
                 </button>
-                <button onClick={handlePrint} className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-sm font-bold text-xs">
-                    <Printer size={14} /> Print
+
+                <button 
+                  onClick={handleDownloadCSV} 
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-sm font-bold text-xs active:scale-95 font-sans"
+                  title="Excel / CSV ডাউনলোড"
+                >
+                    <FileSpreadsheet size={14} /> 
+                    <span className="hidden sm:inline">Excel ডাউনলোড</span>
                 </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-700">
+          {/* Table */}
+          <div className="overflow-x-auto rounded-2xl border border-gray-100 dark:border-gray-700">
             <table className="w-full text-left">
-              <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-bold uppercase text-[10px] tracking-wider">
+              <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-500 dark:text-gray-400 font-bold uppercase text-[11px] tracking-wider border-b border-gray-100 dark:border-gray-700">
                 <tr>
-                  <th className="p-4 w-12 text-center">#</th>
+                  <th className="p-3.5 w-12 text-center">#</th>
                   <th 
-                    className="p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
+                    className="p-3.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
                     onClick={() => handleSort('branch')}
                   >
                     <div className="flex items-center gap-1">
-                      বিবরণ
-                      <span className="text-gray-400 dark:text-gray-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
+                      <span>বিবরণ (শাখা ও কর্মকর্তা)</span>
+                      <span className="text-gray-400 group-hover:text-emerald-600">
                         {sortField === 'branch' ? (sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="opacity-50" />}
                       </span>
                     </div>
                   </th>
                   <th 
-                    className="p-4 w-28 text-center cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
+                    className="p-3.5 w-28 text-center cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
                     onClick={() => handleSort('serial')}
                   >
                     <div className="flex items-center justify-center gap-1">
-                      সিরিয়াল
-                      <span className="text-gray-400 dark:text-gray-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
+                      <span>সিরিয়াল নং</span>
+                      <span className="text-gray-400 group-hover:text-emerald-600">
                         {sortField === 'serial' ? (sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="opacity-50" />}
                       </span>
                     </div>
                   </th>
-                  <th 
-                    className="p-4 w-32 text-center text-gray-500 dark:text-gray-400"
-                  >
-                    হিসাব
+                  <th className="p-3.5 w-36 text-center">
+                    <div className="flex items-center justify-center gap-1 text-gray-500 dark:text-gray-400">
+                      <Calculator size={13} />
+                      <span>লাইভ হিসাব (+ - * /)</span>
+                    </div>
                   </th>
                   <th 
-                    className="p-4 w-32 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
+                    className="p-3.5 w-32 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
                     onClick={() => handleSort('amount')}
                   >
                     <div className="flex items-center justify-end gap-1">
-                      টাকা
-                      <span className="text-gray-400 dark:text-gray-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
+                      <span>টাকা (৳)</span>
+                      <span className="text-gray-400 group-hover:text-emerald-600">
                         {sortField === 'amount' ? (sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="opacity-50" />}
                       </span>
                     </div>
                   </th>
-                  <th className="p-4 w-20 text-center"></th>
+                  <th className="p-3.5 w-24 text-center">ক্রম / অ্যাকশন</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {billItems.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-emerald-50/30 dark:hover:bg-emerald-900/10 transition-colors group">
-                    <td className="p-4 text-gray-400 dark:text-gray-500 font-bold text-xs text-center">{toBanglaDigits(idx + 1)}</td>
-                    <td className="p-4">
-                        <div className="flex flex-col gap-1.5">
+                  <tr key={idx} className="hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 transition-colors group">
+                    <td className="p-3.5 text-gray-400 font-bold text-xs text-center font-mono">
+                      {toBanglaDigits(idx + 1)}
+                    </td>
+                    <td className="p-3.5">
+                        <div className="flex flex-col gap-1">
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded text-[11px] whitespace-nowrap">{toBanglaDigits(item.code)}</span>
-                                <span className="font-bold text-gray-800 dark:text-gray-200 text-sm leading-tight">{item.branch}</span>
+                                <span className="font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded text-[11px] font-mono border border-emerald-100 dark:border-emerald-900/40">
+                                  {toBanglaDigits(item.code)}
+                                </span>
+                                <span className="font-bold text-gray-800 dark:text-gray-200 text-sm">
+                                  {item.branch}
+                                </span>
                             </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                                <User size={12} className="text-gray-400 dark:text-gray-500 shrink-0" />
-                                <span className="truncate max-w-[150px] sm:max-w-none">{item.name}</span>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                                <User size={12} className="text-gray-400 shrink-0" />
+                                <span className="truncate max-w-[160px] sm:max-w-none">{item.name}</span>
+                                {item.mobile && (
+                                  <span className="font-mono text-gray-400 text-[11px]">({item.mobile})</span>
+                                )}
                             </div>
                         </div>
                     </td>
-                    <td className="p-4">
+                    <td className="p-3.5">
                       <input
                         type="text"
-                        value={toBanglaDigits(item.serial)}
+                        value={toBanglaDigits(item.serial || '')}
                         onChange={(e) => handleInputChange(idx, 'serial', toEnglishDigits(e.target.value))}
                         placeholder="-"
-                        className="w-full p-2 border border-gray-100 dark:border-gray-700 rounded-lg text-center text-sm focus:border-emerald-500 dark:focus:border-emerald-500 outline-none bg-gray-50/50 dark:bg-gray-900/50 text-gray-800 dark:text-gray-100 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium"
+                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-xl text-center text-xs sm:text-sm focus:border-emerald-500 outline-none bg-gray-50/50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-medium"
                       />
                     </td>
-                    <td className="p-4">
+                    <td className="p-3.5">
                       <input
                         type="text"
-                        value={toBanglaDigits(item.calculation || '')}
-                        onChange={(e) => handleInputChange(idx, 'calculation', toEnglishDigits(e.target.value))}
-                        placeholder="৫০০+২০০"
-                        className="w-full p-2 border border-gray-100 dark:border-gray-700 rounded-lg text-center text-sm focus:border-emerald-500 dark:focus:border-emerald-500 outline-none bg-gray-50/50 dark:bg-gray-900/50 text-gray-800 dark:text-gray-100 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium"
+                        value={item.calculation || ''}
+                        onChange={(e) => handleInputChange(idx, 'calculation', e.target.value)}
+                        placeholder="যেমন: 500+250"
+                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-xl text-center text-xs font-mono focus:border-blue-500 outline-none bg-gray-50/50 dark:bg-gray-900 text-gray-800 dark:text-gray-100"
+                        title="এখানে যোগ বিয়োগ গুণ ভাগ লিখলে টাকায় স্বয়ংক্রিয়ভাবে হিসাব হবে"
                       />
                     </td>
-                    <td className="p-4">
+                    <td className="p-3.5">
                       <input
                         type="text"
-                        value={toBanglaDigits(item.amount)}
+                        value={toBanglaDigits(item.amount || '')}
                         onChange={(e) => handleInputChange(idx, 'amount', toEnglishDigits(e.target.value))}
                         placeholder="০"
-                        className="w-full p-2 border border-gray-100 dark:border-gray-700 rounded-lg text-right font-bold text-sm text-gray-700 dark:text-gray-300 focus:text-black dark:focus:text-white focus:border-emerald-500 dark:focus:border-emerald-500 outline-none bg-gray-50/50 dark:bg-gray-900/50 focus:bg-white dark:focus:bg-gray-800 transition-all"
+                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-xl text-right font-bold text-xs sm:text-sm text-gray-800 dark:text-gray-100 focus:border-emerald-500 outline-none bg-gray-50/50 dark:bg-gray-900 font-mono"
                       />
                     </td>
-                    <td className="p-2 text-center">
-                        <div className="flex items-center justify-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                    <td className="p-3.5 text-center">
+                        <div className="flex items-center justify-center gap-1">
                             <button 
                                 onClick={() => moveItemUp(idx)}
                                 disabled={idx === 0}
-                                className="text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 p-1.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all disabled:opacity-30 disabled:hover:bg-transparent"
-                                title="Move Up"
+                                className="text-gray-400 hover:text-emerald-600 p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-all disabled:opacity-20"
+                                title="উপরে নিন"
                             >
                                 <ArrowUp size={14} />
                             </button>
                             <button 
                                 onClick={() => moveItemDown(idx)}
                                 disabled={idx === billItems.length - 1}
-                                className="text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 p-1.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all disabled:opacity-30 disabled:hover:bg-transparent"
-                                title="Move Down"
+                                className="text-gray-400 hover:text-emerald-600 p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-all disabled:opacity-20"
+                                title="নিচে নিন"
                             >
                                 <ArrowDown size={14} />
                             </button>
                             <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700 mx-0.5"></div>
                             <button 
                                 onClick={() => removeItem(idx)}
-                                className="text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 p-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-                                title="Remove"
+                                className="text-gray-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-all"
+                                title="মুছে ফেলুন"
                             >
-                                <CloseIcon size={16} />
+                                <CloseIcon size={14} />
                             </button>
                         </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-emerald-50/50 dark:bg-emerald-900/10 font-bold border-t border-emerald-100 dark:border-emerald-900/30">
+              <tfoot className="bg-emerald-50/60 dark:bg-emerald-950/30 font-bold border-t border-emerald-100 dark:border-emerald-900/40">
                 <tr>
-                    <td colSpan={3} className="p-5 text-right text-gray-500 dark:text-gray-400 text-xs uppercase tracking-widest">সর্বমোট:</td>
-                    <td className="p-5 text-right text-emerald-800 dark:text-emerald-400 text-xl font-black">{toBanglaDigits(totalAmount)}</td>
+                    <td colSpan={4} className="p-4 text-right text-gray-600 dark:text-gray-400 text-xs sm:text-sm uppercase tracking-wider">
+                      সর্বমোট বিলের পরিমাণ:
+                    </td>
+                    <td className="p-4 text-right text-emerald-800 dark:text-emerald-300 text-lg sm:text-xl font-black font-mono">
+                      ৳{toBanglaDigits(totalAmount)}
+                    </td>
                     <td></td>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          <div className="mt-6">
+          <div className="mt-5">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="bg-emerald-600 text-white w-6 h-6 flex items-center justify-center rounded-lg font-bold text-xs">৩</span>
+              <h3 className="font-bold text-sm text-gray-800 dark:text-gray-200">
+                বিশেষ নোট <span className="text-xs text-gray-500 font-sans font-normal">(Optional)</span>
+              </h3>
+            </div>
             <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="বিল সম্পর্কিত কোনো বিশেষ নোট থাকলে এখানে লিখুন (প্রিন্টে দেখা যাবে)..."
-                className="w-full p-4 border border-gray-100 dark:border-gray-700 rounded-xl focus:border-emerald-500 dark:focus:border-emerald-500 outline-none text-sm min-h-[100px] bg-gray-50/30 dark:bg-gray-900/30 text-gray-800 dark:text-gray-100 focus:bg-white dark:focus:bg-gray-800 transition-all"
+                placeholder="বিল সম্পর্কিত কোনো বিশেষ মন্তব্য বা নোট থাকলে এখানে লিখুন (প্রিন্ট কপিতে প্রদর্শিত হবে)..."
+                className="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-2xl focus:border-emerald-500 outline-none text-xs sm:text-sm min-h-[90px] bg-gray-50/50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 transition-all"
             />
           </div>
         </div>
       )}
 
+      {/* Modals */}
       <SavedBillsModal 
         isOpen={isSavedBillsModalOpen}
         onClose={() => setIsSavedBillsModalOpen(false)}
@@ -817,6 +695,51 @@ const BillSection: React.FC<BillSectionProps> = ({ billItems, setBillItems, tota
           setBillItems(items);
           addToast('বিল সফলভাবে লোড হয়েছে!', 'success');
         }}
+        onOpenMerge={onOpenMergeBills}
+        onOpenTracking={onOpenTracking}
+      />
+
+      <PrintPreviewModal
+        isOpen={isPrintPreviewOpen}
+        onClose={() => setIsPrintPreviewOpen(false)}
+        billItems={billItems}
+        totalAmount={totalAmount}
+        note={note}
+        config={voucherConfig}
+        addToast={addToast}
+      />
+
+      <VoucherSettingsModal
+        isOpen={isVoucherSettingsOpen}
+        onClose={() => setIsVoucherSettingsOpen(false)}
+        config={voucherConfig}
+        addToast={addToast}
+        onSaveConfig={(cfg) => {
+          if (onUpdateVoucherConfig) {
+            onUpdateVoucherConfig(cfg);
+          }
+          addToast('ভাউচার ফরম্যাট সফলভাবে সংরক্ষিত হয়েছে!', 'success');
+        }}
+      />
+
+      <SaveBillModal
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        billItems={billItems}
+        totalAmount={totalAmount}
+        note={note}
+        voucherConfig={voucherConfig}
+        user={user}
+        onBillSaved={(savedBill) => {
+          if (onUpdateVoucherConfig && savedBill.trackingId) {
+            onUpdateVoucherConfig({
+              ...voucherConfig,
+              trackingId: savedBill.trackingId,
+              status: savedBill.status || 'draft',
+            });
+          }
+        }}
+        addToast={addToast}
       />
     </div>
   );

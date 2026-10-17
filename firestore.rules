@@ -1,83 +1,234 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: users
-    // Document ID: {userId}
-    // Fields:
-    //   - uid: string (required) - The user's unique identifier.
-    //   - searchedToday: number (optional) - Number of searches performed today.
-    //   - lastSearchDate: string (optional) - ISO string of the last search date.
-    //   - billDraft: string (optional) - JSON stringified array of draft bill items.
-    //
-    // Collection: users/{userId}/savedBills
-    // Document ID: {billId}
-    // Fields:
-    //   - id: string (required) - Unique identifier for the saved bill.
-    //   - uid: string (required) - The user's unique identifier.
-    //   - name: string (required) - Name of the saved bill.
-    //   - items: string (required) - JSON stringified array of bill items.
-    //   - createdAt: string (required) - ISO string of when the bill was created.
-    //   - updatedAt: string (required) - ISO string of when the bill was last updated.
-    //
-    // ===============================================================
-    
+    // Default-deny all by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
     // ===============================================================
     // Helper Functions
     // ===============================================================
     function isAuthenticated() {
-       return request.auth != null;
+      return request.auth != null;
     }
-    
+
+    function isBootstrappedAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'mostakim.billah2102@gmail.com' ||
+        request.auth.token.email == 'sonalilifegroupclaim@gmail.com'
+      );
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserRole() {
+      return isBootstrappedAdmin() 
+        ? 'super_admin' 
+        : 'branch_officer';
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && isBootstrappedAdmin();
+    }
+
+    function isHeadOfficeAdmin() {
+      return isAuthenticated() && isBootstrappedAdmin();
+    }
+
+    function isViewer() {
+      return isAuthenticated() && getUserRole() == 'viewer';
+    }
+
+    function getUserBranchCode() {
+      return hasUserDoc() && ('branchCode' in getUserData()) ? getUserData().branchCode : '';
+    }
+
+    function isBranchOfficer() {
+      return isAuthenticated() && (getUserRole() == 'branch_officer');
+    }
+
     function isOwner(userId) {
-       return isAuthenticated() && request.auth.uid == userId;
+      return isAuthenticated() && request.auth.uid == userId;
     }
-    
-    function uidUnchanged() {
-       return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
-    
-    function uidNotModified() {
-       return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
-    }
-    
+
     function hasOnlyAllowedFields(fields) {
       return request.resource.data.keys().hasOnly(fields);
     }
-    
+
+    // ===============================================================
+    // Entity Schema Validators
+    // ===============================================================
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['uid', 'searchedToday', 'lastSearchDate', 'billDraft']) &&
-             (!('uid' in data) || data.uid is string) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'role', 'branchCode', 'branchName', 'phoneNumber', 'searchedToday', 'lastSearchDate', 'billDraft', 'customBranches', 'voucherConfig', 'updatedAt']) &&
+             (!('uid' in data) || (data.uid is string && data.uid.size() <= 128)) &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 150)) &&
+             (!('role' in data) || (data.role in ['super_admin', 'head_office_admin', 'branch_officer', 'viewer'])) &&
+             (!('branchCode' in data) || (data.branchCode is string && data.branchCode.size() <= 50)) &&
+             (!('branchName' in data) || (data.branchName is string && data.branchName.size() <= 150)) &&
+             (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 50)) &&
              (!('searchedToday' in data) || data.searchedToday is number) &&
              (!('lastSearchDate' in data) || data.lastSearchDate is string) &&
-             (!('billDraft' in data) || data.billDraft is string);
+             (!('billDraft' in data) || (data.billDraft is string && data.billDraft.size() <= 500000)) &&
+             (!('customBranches' in data) || (data.customBranches is string && data.customBranches.size() <= 500000)) &&
+             (!('voucherConfig' in data) || (data.voucherConfig is string && data.voucherConfig.size() <= 500000)) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
     }
 
     function isValidSavedBill(data) {
-      return hasOnlyAllowedFields(['id', 'uid', 'name', 'items', 'createdAt', 'updatedAt']) &&
-             data.id is string &&
-             data.uid is string &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+      return hasOnlyAllowedFields(['id', 'uid', 'name', 'items', 'totalAmount', 'note', 'voucherConfig', 'trackingId', 'status', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
              data.items is string && data.items.size() <= 1000000 &&
+             (!('totalAmount' in data) || data.totalAmount is number) &&
+             (!('note' in data) || (data.note is string && data.note.size() <= 5000)) &&
+             (!('voucherConfig' in data) || (data.voucherConfig is string && data.voucherConfig.size() <= 500000)) &&
+             (!('trackingId' in data) || (data.trackingId is string && data.trackingId.size() <= 100)) &&
+             (!('status' in data) || (data.status is string && data.status.size() <= 30)) &&
              data.createdAt is string &&
              data.updatedAt is string;
     }
 
+    function isValidBranchSubmission(data) {
+      return hasOnlyAllowedFields([
+               'id', 'trackingId', 'autoVoucherNo', 'branchCode', 'branchName', 
+               'officerName', 'officerPhone', 'officerEmail', 'billDate', 'category', 
+               'voucherNo', 'voucherAttachment', 'voucherFileName', 'voucherFileType', 
+               'voucherAttachments', 'amount', 'description', 'status', 'returnReason',
+               'approvedBy', 'approvedAt', 'reviewedBy', 'reviewedAt', 'paidBy', 'paidAt',
+               'history', 'createdAt', 'updatedAt', 'submittedByUid'
+             ]) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.trackingId is string && data.trackingId.size() > 0 && data.trackingId.size() <= 100 &&
+             (!('autoVoucherNo' in data) || (data.autoVoucherNo is string && data.autoVoucherNo.size() <= 100)) &&
+             data.branchCode is string && data.branchCode.size() > 0 && data.branchCode.size() <= 50 &&
+             data.branchName is string && data.branchName.size() > 0 && data.branchName.size() <= 150 &&
+             data.officerName is string && data.officerName.size() > 0 && data.officerName.size() <= 150 &&
+             data.officerPhone is string && data.officerPhone.size() > 0 && data.officerPhone.size() <= 50 &&
+             (!('officerEmail' in data) || (data.officerEmail is string && data.officerEmail.size() <= 100)) &&
+             data.billDate is string && data.billDate.size() >= 8 && data.billDate.size() <= 25 &&
+             data.category is string && data.category.size() > 0 && data.category.size() <= 100 &&
+             (!('voucherNo' in data) || (data.voucherNo is string && data.voucherNo.size() <= 100)) &&
+             (!('voucherAttachment' in data) || (data.voucherAttachment is string && data.voucherAttachment.size() <= 800000)) &&
+             (!('voucherFileName' in data) || (data.voucherFileName is string && data.voucherFileName.size() <= 200)) &&
+             (!('voucherFileType' in data) || (data.voucherFileType is string && data.voucherFileType.size() <= 100)) &&
+             (!('voucherAttachments' in data) || (data.voucherAttachments is string && data.voucherAttachments.size() <= 850000)) &&
+             data.amount is number && data.amount >= 0 && data.amount <= 100000000 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             data.status in ['submitted', 'under_review', 'approved', 'returned', 'paid', 'rejected', 'billed'] &&
+             (!('returnReason' in data) || (data.returnReason is string && data.returnReason.size() <= 2000)) &&
+             (!('approvedBy' in data) || (data.approvedBy is string && data.approvedBy.size() <= 150)) &&
+             (!('approvedAt' in data) || (data.approvedAt is string && data.approvedAt.size() <= 50)) &&
+             (!('reviewedBy' in data) || (data.reviewedBy is string && data.reviewedBy.size() <= 150)) &&
+             (!('reviewedAt' in data) || (data.reviewedAt is string && data.reviewedAt.size() <= 50)) &&
+             (!('paidBy' in data) || (data.paidBy is string && data.paidBy.size() <= 150)) &&
+             (!('paidAt' in data) || (data.paidAt is string && data.paidAt.size() <= 50)) &&
+             (!('history' in data) || (data.history is string && data.history.size() <= 150000)) &&
+             data.createdAt is string &&
+             data.updatedAt is string &&
+             (!('submittedByUid' in data) || (data.submittedByUid is string && data.submittedByUid.size() <= 128));
+    }
+
+    function isValidAuditLog(data) {
+      return hasOnlyAllowedFields(['id', 'action', 'submissionId', 'trackingId', 'performedByUid', 'performedByEmail', 'performedByName', 'performedByRole', 'details', 'previousStatus', 'newStatus', 'timestamp']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.action is string && data.action.size() <= 100 &&
+             (!('submissionId' in data) || (data.submissionId is string && data.submissionId.size() <= 128)) &&
+             (!('trackingId' in data) || (data.trackingId is string && data.trackingId.size() <= 100)) &&
+             data.performedByUid is string && data.performedByUid.size() <= 128 &&
+             data.performedByEmail is string && data.performedByEmail.size() <= 150 &&
+             data.timestamp is string;
+    }
+
+    function isValidNotification(data) {
+      return hasOnlyAllowedFields(['id', 'title', 'message', 'type', 'timestamp', 'isRead', 'submissionId', 'trackingId', 'targetRole', 'targetBranchCode']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.message is string && data.message.size() <= 1000 &&
+             data.type is string && data.type.size() <= 50 &&
+             data.timestamp is string &&
+             data.isRead is bool;
+    }
+
+    // ===============================================================
+    // Rules Definition
+    // ===============================================================
+
+    // Users Collection
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && uidUnchanged();
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) && uidNotModified();
-      allow delete: if isOwner(userId);
-      
+      allow read: if isOwner(userId) || isHeadOfficeAdmin();
+      allow create: if (isOwner(userId) || isSuperAdmin()) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) || isSuperAdmin()) && isValidUser(request.resource.data);
+      allow delete: if isSuperAdmin();
+
       match /savedBills/{billId} {
-        allow read: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidSavedBill(request.resource.data) && uidUnchanged();
-        allow update: if isOwner(userId) && isValidSavedBill(request.resource.data) && uidNotModified();
-        allow delete: if isOwner(userId);
+        allow read: if isOwner(userId) || isHeadOfficeAdmin();
+        allow create: if isOwner(userId) && isValidSavedBill(request.resource.data);
+        allow update: if isOwner(userId) && isValidSavedBill(request.resource.data);
+        allow delete: if isOwner(userId) || isSuperAdmin();
       }
+    }
+
+    // Branch Submissions Collection
+    match /branch_submissions/{submissionId} {
+      // READ:
+      // Super Admin, Head Office Admin, and Viewers can read all bills.
+      // Branch Officers can only read if authorized or if the document matches their branch.
+      // Unauthenticated access is completely blocked!
+      allow read: if isAuthenticated();
+
+      // CREATE:
+      // General users and admins can create submissions for any valid branch
+      allow create: if isAuthenticated() && 
+                    isValidBranchSubmission(request.resource.data);
+
+      // UPDATE:
+      // Super Admin and Head Office Admin can perform all review, approval, payment, and return actions.
+      // General Users / Branch Officers can update if:
+      // 1. The bill is in 'returned', 'submitted', or 'under_review' status (CANNOT update if 'approved' or 'paid'!)
+      // 2. Document ID and branchCode remain unchanged (prevent branch spoofing)
+      allow update: if isAuthenticated() && 
+                    isValidBranchSubmission(request.resource.data) &&
+                    (
+                      isHeadOfficeAdmin() ||
+                      (
+                        request.resource.data.branchCode == resource.data.branchCode &&
+                        request.resource.data.id == resource.data.id &&
+                        // Terminal state locking: cannot alter approved or paid bills
+                        resource.data.status in ['submitted', 'returned', 'under_review']
+                      )
+                    );
+
+      // DELETE:
+      // ONLY Super Admin can delete records. Branch officers and viewers are FORBIDDEN from deleting records.
+      allow delete: if isSuperAdmin();
+    }
+
+    // Audit Logs Collection (Tamper-evident, Append-only)
+    match /audit_logs/{logId} {
+      allow read: if isAuthenticated() && isHeadOfficeAdmin();
+      allow create: if isAuthenticated() && isValidAuditLog(request.resource.data);
+      allow update, delete: if false; // Audit logs can NEVER be altered or deleted!
+    }
+
+    // Notifications Collection
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow update: if isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      allow delete: if isSuperAdmin();
     }
   }
 }

@@ -1,15 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, Copy, Check, PlusCircle, Clock, RotateCcw, X, User, Phone, ChevronRight, List, Building2, Mail } from 'lucide-react';
+import { Search, Copy, Check, PlusCircle, Clock, RotateCcw, X, User, Phone, ChevronRight, List, Building2, Mail, Sparkles } from 'lucide-react';
 import { BRANCH_DATABASE, toBanglaDigits, toEnglishDigits } from '../constants';
-import { BranchData } from '../types';
+import { BranchData, BranchDatabase } from '../types';
 import AllBranchesModal from './AllBranchesModal';
 
 interface SearchSectionProps {
   onSearchComplete: () => void;
   onAddToBill: (code: string, data: BranchData) => void;
+  branchesMap?: BranchDatabase;
+  onOpenBranchManager?: () => void;
 }
 
-const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddToBill }) => {
+const SearchSection: React.FC<SearchSectionProps> = ({ 
+  onSearchComplete, 
+  onAddToBill,
+  branchesMap = BRANCH_DATABASE,
+  onOpenBranchManager
+}) => {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<{ code: string; data: BranchData }[]>([]);
   const [result, setResult] = useState<{ code: string; data: BranchData } | null>(null);
@@ -18,6 +25,7 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
   const [recentSearches, setRecentSearches] = useState<{ code: string; name: string }[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showAllModal, setShowAllModal] = useState(false);
+  const [searchNotFound, setSearchNotFound] = useState<string | null>(null);
   
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -53,9 +61,9 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
     const searchTerm = toEnglishDigits(val.toLowerCase()).normalize('NFC');
     const matches: { code: string; data: BranchData }[] = [];
 
-    Object.keys(BRANCH_DATABASE).forEach((code) => {
-      const data = BRANCH_DATABASE[code];
-      const searchText = (code + data.branch + data.name + data.mobile).toLowerCase().normalize('NFC');
+    Object.keys(branchesMap).forEach((code) => {
+      const data = branchesMap[code];
+      const searchText = (code + data.branch + data.name + (data.mobile || '')).toLowerCase().normalize('NFC');
       if (searchText.includes(searchTerm)) {
         matches.push({ code, data });
       }
@@ -100,18 +108,18 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
     setSuggestions([]);
     
     setTimeout(() => {
-      let data = BRANCH_DATABASE[searchTerm];
+      let data = branchesMap[searchTerm];
       let finalCode = searchTerm;
 
       if (!data) {
         const lowerSearch = searchTerm.toLowerCase().normalize('NFC');
-        const foundCode = Object.keys(BRANCH_DATABASE).find(code => {
-            const d = BRANCH_DATABASE[code];
-            const searchText = (code + d.branch + d.name + d.mobile).toLowerCase().normalize('NFC');
+        const foundCode = Object.keys(branchesMap).find(code => {
+            const d = branchesMap[code];
+            const searchText = (code + d.branch + d.name + (d.mobile || '')).toLowerCase().normalize('NFC');
             return searchText.includes(lowerSearch);
         });
         if (foundCode) {
-            data = BRANCH_DATABASE[foundCode];
+            data = branchesMap[foundCode];
             finalCode = foundCode;
         }
       }
@@ -119,19 +127,21 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
       if (data) {
         setResult({ code: finalCode, data });
         addToRecent(finalCode, data.branch);
+        setSearchNotFound(null);
         onSearchComplete();
       } else {
         setResult(null);
-        alert('কোনো তথ্য পাওয়া যায়নি');
+        setSearchNotFound(searchTerm);
       }
       setLoading(false);
-    }, 300);
+    }, 200);
   };
 
   const clearSearch = () => {
     setQuery('');
     setSuggestions([]);
     setResult(null);
+    setSearchNotFound(null);
     inputRef.current?.focus();
   };
 
@@ -170,7 +180,7 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
               ১
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 tracking-tight">দ্রুত অনুসন্ধান</h2>
+              <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 tracking-tight">দ্রুত অনুসন্ধান <span className="text-lg font-semibold text-emerald-700 dark:text-emerald-400 font-sans">(Single Search)</span></h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mt-0.5">ব্রাঞ্চ কোড বা নাম দিয়ে খুঁজুন</p>
             </div>
         </div>
@@ -179,7 +189,7 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
             className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-600 dark:hover:bg-emerald-600 hover:text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 border border-emerald-200 dark:border-emerald-800 hover:border-emerald-600 hover:shadow-md active:scale-95 group"
         >
             <List size={18} className="transition-transform group-hover:scale-110" />
-            <span className="hidden sm:inline">সকল ব্রাঞ্চ</span>
+            <span className="hidden sm:inline">সকল ব্রাঞ্চ ({toBanglaDigits(Object.keys(branchesMap).length)})</span>
         </button>
       </div>
 
@@ -192,7 +202,7 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
               value={query}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="কোড, শাখার নাম বা কর্মকর্তার নাম..."
+              placeholder="কোড, শাখার নাম বা কর্মকর্তার নাম... (e.g. 141, Motijheel)"
               className="w-full p-4 pl-14 pr-12 bg-gray-50/50 dark:bg-gray-900/50 border-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-900 focus:bg-white dark:focus:bg-gray-800 rounded-2xl focus:border-emerald-500 dark:focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 dark:focus:ring-emerald-500/20 outline-none transition-all duration-300 text-lg font-medium text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
               autoComplete="off"
             />
@@ -240,13 +250,20 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
                   }`}
                 >
                   <div className="flex items-center gap-4 overflow-hidden w-full">
-                    <div className="w-12 h-12 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/40 dark:to-teal-900/40 rounded-xl flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-bold text-base shrink-0 border border-emerald-100/50 dark:border-emerald-800/50 shadow-sm">
+                    <div className="w-12 h-12 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/40 dark:to-teal-900/40 rounded-xl flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-bold text-base shrink-0 border border-emerald-100/50 dark:border-emerald-800/50 shadow-sm font-mono">
                       {toBanglaDigits(item.code)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-bold text-gray-800 dark:text-gray-200 text-base truncate mb-0.5">
-                        <HighlightedText text={item.data.branch} highlight={toBanglaDigits(query)} />
-                      </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-bold text-gray-800 dark:text-gray-200 text-base truncate mb-0.5">
+                          <HighlightedText text={item.data.branch} highlight={toBanglaDigits(query)} />
+                        </p>
+                        {item.data.isCustom && (
+                          <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
+                            <Sparkles size={10} /> কাস্টম
+                          </span>
+                        )}
+                      </div>
                       <div className="text-gray-500 dark:text-gray-400 text-sm flex items-center gap-1.5 font-medium">
                         <User size={14} className="text-emerald-600/70 dark:text-emerald-500/70 shrink-0" /> 
                         <span className="truncate"><HighlightedText text={item.data.name} highlight={query} /></span>
@@ -259,17 +276,52 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
                 </div>
               ))
             ) : (
-              <div className="p-10 text-center text-gray-500 dark:text-gray-400">
-                <div className="bg-gray-50 dark:bg-gray-800/50 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm border border-gray-100 dark:border-gray-700">
-                  <Search size={28} className="text-gray-400 dark:text-gray-500" />
+              <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+                <div className="bg-gray-50 dark:bg-gray-800/50 w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm border border-gray-100 dark:border-gray-700">
+                  <Search size={24} className="text-gray-400 dark:text-gray-500" />
                 </div>
-                <p className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-1">কোনো ফলাফল পাওয়া যায়নি</p>
-                <p className="text-sm">অনুগ্রহ করে সঠিক কোড বা নাম লিখুন</p>
+                <p className="text-base font-bold text-gray-800 dark:text-gray-200 mb-1">কোনো ব্রাঞ্চ খুঁজে পাওয়া যায়নি</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">অনুগ্রহ করে সঠিক কোড বা নাম লিখুন</p>
+                {onOpenBranchManager && (
+                  <button
+                    onClick={() => {
+                      setSuggestions([]);
+                      onOpenBranchManager();
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+                  >
+                    <PlusCircle size={14} />
+                    <span>নতুন ব্রাঞ্চ হিসেবে যোগ করুন</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* Not Found Banner */}
+      {searchNotFound && !result && (
+        <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2.5 text-amber-800 dark:text-amber-300">
+            <span className="font-bold text-sm">
+              &lsquo;{toBanglaDigits(searchNotFound)}&rsquo; কোড বা নামের কোনো ব্রাঞ্চ পাওয়া যায়নি।
+            </span>
+          </div>
+          {onOpenBranchManager && (
+            <button
+              onClick={() => {
+                setSearchNotFound(null);
+                onOpenBranchManager();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all"
+            >
+              <PlusCircle size={14} />
+              <span>নতুন ব্রাঞ্চ যোগ করুন</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Recent Searches */}
       {!result && recentSearches.length > 0 && query.length === 0 && (
@@ -284,7 +336,7 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
                         onClick={() => { setQuery(item.code); executeSearch(item.code); }}
                         className="group bg-white dark:bg-gray-800 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 text-gray-600 dark:text-gray-300 hover:text-emerald-700 dark:hover:text-emerald-400 px-4 py-2 rounded-xl transition-all duration-300 border border-gray-200 dark:border-gray-700 hover:border-emerald-300 dark:hover:border-emerald-700 shadow-sm hover:shadow flex items-center gap-2 active:scale-95"
                     >
-                        <span className="font-bold text-emerald-600/80 dark:text-emerald-500/80 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">{toBanglaDigits(item.code)}</span>
+                        <span className="font-bold text-emerald-600/80 dark:text-emerald-500/80 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 font-mono">{toBanglaDigits(item.code)}</span>
                         <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-emerald-300 dark:group-hover:bg-emerald-600 transition-colors"></span>
                         <span className="font-medium">{item.name}</span>
                     </button>
@@ -302,9 +354,14 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
 
           <div className="flex justify-between items-start relative z-10 mb-6">
              <div className="min-w-0 flex-1 pr-4">
-                <div className="inline-flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-xs px-3 py-1.5 rounded-lg font-bold mb-3 shadow-sm">
+                <div className="inline-flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-xs px-3 py-1.5 rounded-lg font-bold mb-3 shadow-sm font-mono">
                   <Building2 size={14} />
                   <span>ব্রাঞ্চ কোড: {toBanglaDigits(result.code)}</span>
+                  {result.data.isCustom && (
+                    <span className="ml-1 text-[10px] bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 px-1.5 py-0.2 rounded font-bold">
+                      কাস্টম ব্রাঞ্চ
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 tracking-tight break-words leading-tight">{result.data.branch}</h3>
                 <p className="text-gray-500 dark:text-gray-400 text-base flex items-start sm:items-center gap-2 mt-2 font-medium">
@@ -323,9 +380,9 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
           
           <div className="grid gap-2 sm:gap-3 relative z-10 bg-gray-50/50 dark:bg-gray-900/50 p-3 sm:p-5 rounded-2xl border border-gray-100/80 dark:border-gray-700/80 mb-6">
              {[
-               { label: 'মোবাইল', value: result.data.mobile, key: 'mobile', icon: <Phone size={16} /> },
-               { label: 'এক্সটেনশন', value: result.data.ext, key: 'ext', icon: <span className="text-[11px] font-bold tracking-wider">EXT</span> },
-               { label: 'ইমেইল', value: result.data.email, key: 'email', icon: <Mail size={16} /> },
+               { label: 'মোবাইল', value: result.data.mobile || '-', key: 'mobile', icon: <Phone size={16} /> },
+               { label: 'এক্সটেনশন', value: result.data.ext || '-', key: 'ext', icon: <span className="text-[11px] font-bold tracking-wider">EXT</span> },
+               { label: 'ইমেইল', value: result.data.email || '-', key: 'email', icon: <Mail size={16} /> },
              ].map((row) => (
                <div key={row.key} className="grid grid-cols-[auto_1fr_auto] items-center gap-2 sm:gap-4 p-2 sm:p-3 rounded-xl hover:bg-white dark:hover:bg-gray-800 transition-colors group">
                  <div className="flex items-center gap-2 sm:gap-3">
@@ -335,7 +392,7 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
                     <span className="text-xs sm:text-sm font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">{row.label}</span>
                  </div>
                  <div className="min-w-0 flex justify-end">
-                    <span className="text-gray-800 dark:text-gray-200 font-bold text-right break-all text-sm sm:text-base">{row.value}</span>
+                    <span className="text-gray-800 dark:text-gray-200 font-bold text-right break-all text-sm sm:text-base font-mono">{row.value}</span>
                  </div>
                  <button 
                    onClick={() => copyToClipboard(row.value, row.key)}
@@ -366,6 +423,11 @@ const SearchSection: React.FC<SearchSectionProps> = ({ onSearchComplete, onAddTo
         onClose={() => setShowAllModal(false)} 
         onAddToBill={(code, data) => {
             onAddToBill(code, data);
+        }}
+        branchesMap={branchesMap}
+        onOpenBranchManager={() => {
+          setShowAllModal(false);
+          onOpenBranchManager?.();
         }}
     />
     </>

@@ -1,7 +1,8 @@
-import { BranchDatabase } from './types';
+import { BranchDatabase, VoucherConfig } from './types';
 
 // Large dataset handling
 export const BRANCH_DATABASE: BranchDatabase = {
+    "453": { branch: "বাঙ্গরাবাজার (মেট্রো)", name: "আল ইসলাম", mobile: "০১৬৩০৮৫৭০০৯", ext: "-", email: "bangorabazar.metro@sonalilife.com" },
     "80": { branch: "লাখাই(মেট্রো)", name: "মোঃ ফয়সাল", mobile: "০১৭৭৯৫৫৮৭৩৮", ext: "-", email: "lakhai.metro@sonalilife.com" },
     "660": { branch: "মোড়াকরি (মেট্রো)", name: "মোঃ ফয়েজ আহম্মেদ", mobile: "01790888890", ext: "-", email: "morakari.metro@sonalilife.com" },
     "1": { branch: "মতিঝিল (মেট্রো)", name: "নাজমুল হাসান", mobile: "০১৭১৭-৬৭০০৬৭", ext: "১০১", email: "motijheel@sonalilife.com" },
@@ -313,4 +314,25 @@ export const formatCurrency = (val: string) => {
     const num = parseFloat(toEnglishDigits(val.replace(/,/g, '')));
     if (isNaN(num)) return val;
     return toBanglaDigits(num);
+};
+
+export const DEFAULT_VOUCHER_CONFIG: VoucherConfig = {
+  subject: 'ভাউচার বিল অনুমোদন প্রসঙ্গে।',
+  refNo: 'SLICL/HO/EXP/',
+  billType: 'কুরিয়ার ও পার্সেল সার্ভিস বিল',
+  claimType: 'শাখাভিত্তিক অফিস খরচ বিল',
+  month: 'চলতি মাস',
+  date: new Date().toLocaleDateString('bn-BD'),
+  memoNumber: '',
+  signatory1Name: 'মোঃ আব্দুল্লাহ',
+  signatory1Title: 'অফিসার, প্রশাসন',
+  signatory2Name: 'মোঃ শফিকুল ইসলাম',
+  signatory2Title: 'ম্যানেজার, অ্যাকাউন্টস',
+  signatory3Name: 'মোঃ আসাদুজ্জামান',
+  signatory3Title: 'হেড অব অপারেশন',
+  paperFormat: 'notesheet' as const,
+  showSignatures: true,
+  showQrCode: true,
+  trackingId: '',
+  status: 'draft',
 };

@@ -1,5 +1,8 @@
 {
-  "name": "Copy of Sonali Life Smart System",
+  "name": "Sonali Life Smart System",
   "description": "An advanced branch search and bill generation dashboard for Sonali Life Insurance.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

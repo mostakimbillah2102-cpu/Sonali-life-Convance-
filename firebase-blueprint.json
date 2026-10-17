@@ -2,12 +2,33 @@
   "entities": {
     "UserProfile": {
       "title": "UserProfile",
-      "description": "Stores user-specific data like search stats and draft bills.",
+      "description": "Stores user-specific data like search stats, draft bills, custom branches, and role permissions.",
       "type": "object",
       "properties": {
         "uid": {
           "type": "string",
           "description": "The user's unique identifier."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The user's full name."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["super_admin", "head_office_admin", "branch_officer", "viewer"],
+          "description": "Assigned role for access control."
+        },
+        "branchCode": {
+          "type": "string",
+          "description": "Branch code assigned to the officer."
+        },
+        "branchName": {
+          "type": "string",
+          "description": "Branch name assigned to the officer."
         },
         "searchedToday": {
           "type": "number",
@@ -20,6 +41,14 @@
         "billDraft": {
           "type": "string",
           "description": "JSON stringified array of draft bill items."
+        },
+        "customBranches": {
+          "type": "string",
+          "description": "JSON stringified map of custom user branches."
+        },
+        "voucherConfig": {
+          "type": "string",
+          "description": "JSON stringified voucher configuration."
         }
       },
       "required": ["uid"]
@@ -45,6 +74,27 @@
           "type": "string",
           "description": "JSON stringified array of bill items."
         },
+        "totalAmount": {
+          "type": "number",
+          "description": "Total amount calculated for this bill."
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional note attached to the bill."
+        },
+        "voucherConfig": {
+          "type": "string",
+          "description": "JSON stringified voucher configuration."
+        },
+        "trackingId": {
+          "type": "string",
+          "description": "Unique verification tracking code for the bill."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "dispatched", "approved", "paid"],
+          "description": "Current lifecycle status of the bill."
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -57,6 +107,155 @@
         }
       },
       "required": ["id", "uid", "name", "items", "createdAt", "updatedAt"]
+    },
+    "BranchSubmission": {
+      "title": "BranchSubmission",
+      "description": "Bill submitted by branch officers for verification, consolidation, and date-range reporting.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the submission."
+        },
+        "trackingId": {
+          "type": "string",
+          "description": "Human-readable tracking code (e.g. SLI-BR-141-20260910-1234)."
+        },
+        "autoVoucherNo": {
+          "type": "string",
+          "description": "Unique automated system voucher number (e.g. SLI-VCH-2026-9812)."
+        },
+        "branchCode": {
+          "type": "string",
+          "description": "Branch code."
+        },
+        "branchName": {
+          "type": "string",
+          "description": "Branch name."
+        },
+        "officerName": {
+          "type": "string",
+          "description": "Name of the officer who incurred or submitted the expense."
+        },
+        "officerPhone": {
+          "type": "string",
+          "description": "Contact phone number of the officer."
+        },
+        "officerEmail": {
+          "type": "string",
+          "description": "Optional email of the officer."
+        },
+        "billDate": {
+          "type": "string",
+          "description": "Expense date in YYYY-MM-DD format."
+        },
+        "category": {
+          "type": "string",
+          "description": "Expense category (e.g. office rent, electricity, stationery, travel)."
+        },
+        "voucherNo": {
+          "type": "string",
+          "description": "Optional memo or receipt voucher number."
+        },
+        "voucherAttachment": {
+          "type": "string",
+          "description": "Base64 encoded data URI of the uploaded memo/voucher receipt (image or PDF)."
+        },
+        "voucherFileName": {
+          "type": "string",
+          "description": "Original file name of the uploaded voucher/challan document."
+        },
+        "voucherFileType": {
+          "type": "string",
+          "description": "MIME type of the uploaded voucher attachment."
+        },
+        "voucherAttachments": {
+          "type": "string",
+          "description": "JSON stringified array of multiple voucher attachments."
+        },
+        "amount": {
+          "type": "number",
+          "description": "Amount in BDT."
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the expense."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["submitted", "under_review", "approved", "returned", "paid", "rejected", "billed"],
+          "description": "Lifecycle status of the submission."
+        },
+        "returnReason": {
+          "type": "string",
+          "description": "Correction instruction when returned to branch."
+        },
+        "approvedBy": {
+          "type": "string",
+          "description": "Name or email of the approving authority."
+        },
+        "approvedAt": {
+          "type": "string",
+          "description": "Timestamp when approved."
+        },
+        "history": {
+          "type": "string",
+          "description": "JSON stringified array of digital audit approval trail."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO string timestamp when submitted."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO string timestamp when updated."
+        },
+        "submittedByUid": {
+          "type": "string",
+          "description": "Optional UID of the user who submitted the bill."
+        }
+      },
+      "required": ["id", "trackingId", "branchCode", "branchName", "officerName", "officerPhone", "billDate", "category", "amount", "status", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable digital record of every creation, modification, approval, and rejection action.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "submissionId": { "type": "string" },
+        "trackingId": { "type": "string" },
+        "performedByUid": { "type": "string" },
+        "performedByEmail": { "type": "string" },
+        "performedByName": { "type": "string" },
+        "performedByRole": { "type": "string" },
+        "details": { "type": "string" },
+        "previousStatus": { "type": "string" },
+        "newStatus": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "action", "performedByUid", "performedByEmail", "timestamp"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "Real-time updates and alerts for bill submissions and approvals.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "submissionId": { "type": "string" },
+        "trackingId": { "type": "string" },
+        "targetRole": { "type": "string" },
+        "targetBranchCode": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "type", "timestamp"]
     }
   },
   "firestore": {
@@ -64,13 +263,31 @@
       "schema": {
         "$ref": "#/entities/UserProfile"
       },
-      "description": "User profiles containing search stats and drafts."
+      "description": "User profiles containing search stats, drafts, and role assignments."
     },
     "/users/{userId}/savedBills/{billId}": {
       "schema": {
         "$ref": "#/entities/SavedBill"
       },
       "description": "Saved bills belonging to the user."
+    },
+    "/branch_submissions/{submissionId}": {
+      "schema": {
+        "$ref": "#/entities/BranchSubmission"
+      },
+      "description": "Direct bill submissions from branches and field officers."
+    },
+    "/audit_logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/AuditLog"
+      },
+      "description": "Tamper-evident audit trail of bill modifications and approvals."
+    },
+    "/notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/AppNotification"
+      },
+      "description": "Notification broadcasts for status changes and approvals."
     }
   }
 }

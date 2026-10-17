@@ -4,7 +4,7 @@ import { ToastData } from '../types';
 
 interface ToastProps {
   toasts: ToastData[];
-  removeToast: (id: number) => void;
+  removeToast: (id: string) => void;
 }
 
 const Toast: React.FC<ToastProps> = ({ toasts, removeToast }) => {
